@@ -3,7 +3,7 @@ import zipfile
 import json
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
 # --- Configuração ---
@@ -11,6 +11,54 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workflow.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 db = SQLAlchemy(app)
+
+# PONTO 1: Mapeamento de Itens para Colaboradores
+ITEM_DEFINITIONS_PRODUCAO = {
+    "Tampa Inox": "Anderson",
+    "Tampa Epoxi": "Anderson",
+    "Revestimento Fundo": "Hélio",
+    "Revestimento Em L": "Hélio",
+    "Revestimento Em U": "Hélio",
+    "Sistema de Elevar Manual 2 3/16": "Luiz e José",
+    "Sistema de Elevar Manual 1/8 e 3/16": "Luiz e José",
+    "Sistema de Elevar Manual Arg e 3/16": "Luiz e José",
+    "Sistema de Elevar Manual Arg e 1/8": "Luiz e José",
+    "Sistema de Elevar Motor 2 3/16": "Luiz e José",
+    "Sistema de Elevar Motor 1/8 e 3/16": "Luiz e José",
+    "Sistema de Elevar Motor Arg e 3/16": "Luiz e José",
+    "Sistema de Elevar Motor Arg e 1/8": "Luiz e José",
+    "Giratório 1L 4E": "Luiz",
+    "Giratório 1L 5E": "Luiz",
+    "Giratório 2L 5E": "Luiz",
+    "Giratório 2L 6E": "Luiz",
+    "Giratório 2L 7E": "Luiz",
+    "Giratório 2L 8E": "Luiz",
+    "Cooktop + Bifeira": "Luiz",
+    "Cooktop": "Indefinido", # Sem colaborador na lista
+    "Porta Guilhotina Vidro L": "Edison",
+    "Porta Guilhotina Vidro U": "Edison",
+    "Porta Guilhotina Vidro F": "Edison",
+    "Porta Guilhotina Inox F": "Edison",
+    "Porta Guilhotina Pedra F": "Edison",
+    "Coifa Epoxi": "Hélio",
+    "Isolamento Coifa": "Indefinido", # Sem colaborador na lista
+    "Placa cimenticia Porta": "Edison",
+    "Revestimento Base": "Indefinido", # Sem colaborador na lista
+    "Bifeteira grill": "Luiz",
+    "Balanço 2": "Luiz",
+    "Balanço 3": "Luiz",
+    "Balanço 4": "Luiz",
+    "Kit 6 Espetos": "José",
+    "Regulagem Comum 2": "José",
+    "Regulagem Comum 3": "José",
+    "Regulagem Comum 4": "José",
+    "Regulagem Comum 5": "José",
+    "Gavetão Inox": "Hélio",
+    "Moldura Área de fogo": "Luiz",
+    "Grelha de descanso": "José",
+    "KAM800 2 Faces": "Edison"
+}
+
 
 # --- Modelos do Banco de Dados ---
 
@@ -24,17 +72,26 @@ class Orcamento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     numero = db.Column(db.String(50), nullable=False)
     cliente = db.Column(db.String(200), nullable=False)
-    status_geral = db.Column(db.String(50), default='Novo')
     grupo_id = db.Column(db.Integer, db.ForeignKey('grupo.id'), nullable=False)
     
-    # Colunas de Etapas (para grupos de Entrada, Visitas, Standby)
+    status_atual = db.Column(db.String(100), default='Orçamento Aprovado')
+    
+    # PONTO 2: Novas colunas de data para Produção
+    data_entrada_producao = db.Column(db.DateTime)
+    data_limite_producao = db.Column(db.DateTime)
+    
+    data_visita = db.Column(db.DateTime)
+    responsavel_visita = db.Column(db.String(100))
+    
+    data_pronto = db.Column(db.DateTime)
+    data_instalacao = db.Column(db.DateTime)
+    responsavel_instalacao = db.Column(db.String(100))
+    
+    grupo_origem_standby = db.Column(db.Integer)
+    
     etapa1_descricao = db.Column(db.String(500))
-    etapa1_status = db.Column(db.String(50), default='Aguardando') # Tirar Medida / Em Produção / Instalar / Instalado
-    
     etapa2_descricao = db.Column(db.String(500))
-    etapa2_status = db.Column(db.String(50), default='Aguardando') # Tirar Medida / Em Produção / Instalar / Instalado
     
-    # Relações
     tarefas = db.relationship('TarefaProducao', backref='orcamento', lazy=True, cascade="all, delete-orphan")
     arquivos = db.relationship('ArquivoAnexado', backref='orcamento', lazy=True, cascade="all, delete-orphan")
 
@@ -43,13 +100,23 @@ class Orcamento(db.Model):
             "id": self.id,
             "numero": self.numero,
             "cliente": self.cliente,
-            "status_geral": self.status_geral,
             "grupo_id": self.grupo_id,
             "grupo_nome": self.grupo.nome,
+            
+            "status_atual": self.status_atual,
+            "data_entrada_producao": self.data_entrada_producao.strftime('%Y-%m-%d') if self.data_entrada_producao else None,
+            "data_limite_producao": self.data_limite_producao.strftime('%Y-%m-%d') if self.data_limite_producao else None,
+            
+            "data_visita": self.data_visita.strftime('%Y-%m-%d %H:%M') if self.data_visita else None,
+            "responsavel_visita": self.responsavel_visita,
+            "data_pronto": self.data_pronto.strftime('%Y-%m-%d %H:%M') if self.data_pronto else None,
+            "data_instalacao": self.data_instalacao.strftime('%Y-%m-%d %H:%M') if self.data_instalacao else None,
+            "responsavel_instalacao": self.responsavel_instalacao,
+            "grupo_origem_standby": self.grupo_origem_standby,
+            
             "etapa1_descricao": self.etapa1_descricao,
-            "etapa1_status": self.etapa1_status,
             "etapa2_descricao": self.etapa2_descricao,
-            "etapa2_status": self.etapa2_status,
+
             "tarefas": [t.to_dict() for t in self.tarefas],
             "arquivos": [a.to_dict() for a in self.arquivos]
         }
@@ -57,9 +124,9 @@ class Orcamento(db.Model):
 class TarefaProducao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     orcamento_id = db.Column(db.Integer, db.ForeignKey('orcamento.id'), nullable=False)
-    colaborador = db.Column(db.String(100), nullable=False) # Edison, Luiz, etc.
+    colaborador = db.Column(db.String(100), nullable=False)
     item_descricao = db.Column(db.String(500))
-    status = db.Column(db.String(50), default='Não Iniciado') # Não Iniciado / Iniciou a Produção / Fase de Acabamento / Produção Finalizada
+    status = db.Column(db.String(50), default='Não Iniciado')
     
     def to_dict(self):
         return {
@@ -73,7 +140,7 @@ class ArquivoAnexado(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     orcamento_id = db.Column(db.Integer, db.ForeignKey('orcamento.id'), nullable=False)
     nome_arquivo = db.Column(db.String(300))
-    caminho_arquivo = db.Column(db.String(500)) # Caminho relativo (ex: 'uploads/orcamento_cliente_123.pdf')
+    caminho_arquivo = db.Column(db.String(500))
 
     def to_dict(self):
         return {
@@ -122,7 +189,6 @@ def upload_orcamento():
                     with zf.open(filename) as f:
                         json_data = json.load(f)
                 elif filename.endswith('.pdf'):
-                    # Extrai e salva o PDF
                     safe_filename = secure_filename(os.path.basename(filename))
                     target_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
                     with open(target_path, 'wb') as f:
@@ -132,18 +198,17 @@ def upload_orcamento():
         if not json_data:
             return jsonify({"error": "Arquivo .json não encontrado no .zip"}), 400
 
-        # Cria o orçamento no grupo "Entrada de Orçamentos" (ID 1)
         novo_orcamento = Orcamento(
             numero=json_data.get('numero_orcamento', 'N/A'),
             cliente=json_data.get('nome_cliente', 'N/A'),
-            grupo_id=1, # ID 1 = "Entrada de Orçamentos"
+            grupo_id=1, 
+            status_atual='Orçamento Aprovado',
             etapa1_descricao=json_data.get('itens_etapa_1', ''),
             etapa2_descricao=json_data.get('itens_etapa_2', '')
         )
         db.session.add(novo_orcamento)
-        db.session.commit() # Commit para obter o ID do novo_orcamento
+        db.session.commit()
         
-        # Adiciona os arquivos PDF extraídos ao banco de dados
         for pdf in pdf_files:
             anexo = ArquivoAnexado(
                 orcamento_id=novo_orcamento.id,
@@ -152,20 +217,22 @@ def upload_orcamento():
             )
             db.session.add(anexo)
 
-        # Cria as tarefas de produção
-        colaboradores_fixos = ["Edison", "Luiz", "Hélio", "José", "Anderson", "Eudes", "Pintura"]
+        # PONTO 1: Lógica de Tarefas modificada
         if 'tarefas_producao' in json_data:
             for tarefa_info in json_data['tarefas_producao']:
-                if tarefa_info.get('colaborador') in colaboradores_fixos:
-                    tarefa = TarefaProducao(
-                        orcamento_id=novo_orcamento.id,
-                        colaborador=tarefa_info['colaborador'],
-                        item_descricao=tarefa_info.get('item', 'Item não descrito')
-                    )
-                    db.session.add(tarefa)
+                item_desc = tarefa_info.get('item', 'Item não descrito')
+                
+                # Busca o colaborador no mapeamento
+                colaborador_definido = ITEM_DEFINITIONS_PRODUCAO.get(item_desc, "Indefinido")
+                
+                tarefa = TarefaProducao(
+                    orcamento_id=novo_orcamento.id,
+                    colaborador=colaborador_definido, # Usa o colaborador do mapeamento
+                    item_descricao=item_desc
+                )
+                db.session.add(tarefa)
         
         db.session.commit()
-
         return jsonify(novo_orcamento.to_dict()), 201
 
     except Exception as e:
@@ -207,42 +274,139 @@ def add_file_to_orcamento(orc_id):
 
 @app.route('/uploads/<path:filename>')
 def get_uploaded_file(filename):
-    # O path agora pode ser 'uploads/arquivo.pdf', então usamos a pasta base
     base_dir = os.path.dirname(filename)
     file_name = os.path.basename(filename)
+    if base_dir != 'uploads':
+         base_dir = 'uploads'
+         
+    if not os.path.dirname(filename):
+        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        
     return send_from_directory(base_dir, file_name)
 
+# Helper para parse de datas (aceita ISO ou YYYY-MM-DD)
+def parse_datetime(date_str):
+    if not date_str: return None
+    try:
+        return datetime.fromisoformat(date_str)
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return None
 
-@app.route('/api/orcamento/<int:orc_id>/etapa', methods=['PUT'])
-def update_etapa_status(orc_id):
+@app.route('/api/orcamento/<int:orc_id>/status', methods=['PUT'])
+def update_orcamento_status(orc_id):
     orcamento = Orcamento.query.get(orc_id)
-    if not orcamento: return jsonify({"error": "Orçamento não encontrado"}), 404
+    if not orcamento: 
+        return jsonify({"error": "Orçamento não encontrado"}), 404
         
     data = request.json
-    etapa = data.get('etapa') # 'etapa1' ou 'etapa2'
-    novo_status = data.get('status')
+    novo_status = data.get('novo_status')
+    dados_adicionais = data.get('dados_adicionais', {})
     
-    grupo_producao = Grupo.query.filter_by(nome='Linha de Produção').first()
-    grupo_instalados = Grupo.query.filter_by(nome='Instalados').first()
+    grupo_atual_id = orcamento.grupo_id
+    orcamento.status_atual = novo_status
+    
+    grupos = {g.nome: g.id for g in Grupo.query.all()}
+    g_entrada = grupos.get('Entrada de Orçamento')
+    g_visitas = grupos.get('Visitas e Medidas')
+    g_projetar = grupos.get('Projetar')
+    g_producao = grupos.get('Linha de Produção')
+    g_prontos = grupos.get('Prontos')
+    g_standby = grupos.get('StandBy')
+    g_instalados = grupos.get('Instalados')
+    
+    # --- PONTO 2: Flag para checar se moveu para produção ---
+    moveu_para_producao = False
 
-    if etapa == 'etapa1':
-        orcamento.etapa1_status = novo_status
-    elif etapa == 'etapa2':
-        orcamento.etapa2_status = novo_status
-    else:
-        return jsonify({"error": "Etapa inválida"}), 400
-        
-    # --- REGRA DE AUTOMAÇÃO 1 ---
-    if novo_status == 'Em Produção' and orcamento.grupo_id != grupo_producao.id:
-        orcamento.grupo_id = grupo_producao.id
-        
-    # --- REGRA DE AUTOMAÇÃO 2 ---
-    if orcamento.etapa1_status == 'Instalado' and orcamento.etapa2_status == 'Instalado':
-        if grupo_instalados:
-            orcamento.grupo_id = grupo_instalados.id
+    # 1. Grupo: Entrada de Orçamento
+    if grupo_atual_id == g_entrada:
+        if novo_status == 'Visita Agendada':
+            orcamento.grupo_id = g_visitas
+            orcamento.data_visita = parse_datetime(dados_adicionais.get('data_visita'))
+            orcamento.responsavel_visita = dados_adicionais.get('responsavel_visita')
+        elif novo_status in ['Desenhar', 'Produzir']:
+            orcamento.grupo_id = g_projetar
+        elif novo_status == 'Em Produção':
+            orcamento.grupo_id = g_producao
+            moveu_para_producao = True
+        elif novo_status in ['Aguardando Cliente', 'Aguardando Arq/Eng', 'Aguardando Obra', 'Parado']:
+            orcamento.grupo_id = g_standby
+            orcamento.grupo_origem_standby = grupo_atual_id
+
+    # 2. Grupo: Visitas e Medidas
+    elif grupo_atual_id == g_visitas:
+        if novo_status == 'Mandar para Produção':
+            orcamento.grupo_id = g_projetar
+        elif novo_status == 'Em Produção':
+            orcamento.grupo_id = g_producao
+            moveu_para_producao = True
+        elif novo_status == 'Instalado':
+            etapa = dados_adicionais.get('etapa_instalada')
+            if etapa == 'Etapa 1':
+                orcamento.grupo_id = g_visitas
+                orcamento.status_atual = 'Agendar Visita'
+            elif etapa == 'Etapa 2':
+                orcamento.grupo_id = g_instalados
+                orcamento.status_atual = 'Instalado'
+
+    # 3. Grupo: Projetar
+    elif grupo_atual_id == g_projetar:
+        if novo_status == 'Aprovado para Produção':
+            orcamento.grupo_id = g_producao
+            moveu_para_producao = True
+        elif novo_status == 'StandBy':
+            orcamento.grupo_id = g_standby
+            orcamento.grupo_origem_standby = grupo_atual_id
+
+    # 4. Grupo: Linha de Produção
+    elif grupo_atual_id == g_producao:
+        if novo_status == 'StandBy':
+            orcamento.grupo_id = g_standby
+            orcamento.grupo_origem_standby = grupo_atual_id
+
+    # 5. Grupo: Prontos
+    elif grupo_atual_id == g_prontos:
+        if novo_status == 'Instalação Agendada':
+            orcamento.data_instalacao = parse_datetime(dados_adicionais.get('data_instalacao'))
+            orcamento.responsavel_instalacao = dados_adicionais.get('responsavel_instalacao')
+        elif novo_status == 'StandBy':
+            orcamento.grupo_id = g_standby
+            orcamento.grupo_origem_standby = grupo_atual_id
+        elif novo_status == 'Instalado':
+            etapa = dados_adicionais.get('etapa_instalada')
+            if etapa == 'Etapa 1':
+                orcamento.grupo_id = g_visitas
+                orcamento.status_atual = 'Agendar Visita'
+            elif etapa == 'Etapa 2':
+                orcamento.grupo_id = g_instalados
+                orcamento.status_atual = 'Instalado'
+
+    # 6. Grupo: StandBy
+    elif grupo_atual_id == g_standby:
+        if novo_status == 'Liberado':
+            if orcamento.grupo_origem_standby:
+                orcamento.grupo_id = orcamento.grupo_origem_standby
+            else:
+                orcamento.grupo_id = g_entrada
+            orcamento.grupo_origem_standby = None
             
-    db.session.commit()
-    return jsonify(orcamento.to_dict())
+    # --- PONTO 2: Salva as datas de produção se moveu ---
+    if moveu_para_producao:
+        orcamento.data_entrada_producao = parse_datetime(dados_adicionais.get('data_entrada'))
+        orcamento.data_limite_producao = parse_datetime(dados_adicionais.get('data_limite'))
+        # Reseta tarefas
+        for tarefa in orcamento.tarefas:
+            tarefa.status = 'Não Iniciado'
+    
+    try:
+        db.session.commit()
+        return jsonify(orcamento.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/tarefa/<int:tarefa_id>/status', methods=['PUT'])
 def update_tarefa_status(tarefa_id):
@@ -254,10 +418,9 @@ def update_tarefa_status(tarefa_id):
     tarefa.status = novo_status
     db.session.commit()
     
-    # --- NOVA AUTOMAÇÃO: Checar se todas as tarefas do orçamento estão prontas ---
     orcamento = tarefa.orcamento
     todas_prontas = True
-    if not orcamento.tarefas: # Se não houver tarefas (raro), não faz nada
+    if not orcamento.tarefas:
         todas_prontas = False
         
     for t in orcamento.tarefas:
@@ -266,23 +429,56 @@ def update_tarefa_status(tarefa_id):
             break
             
     if todas_prontas:
-        grupo_prontos = Grupo.query.filter_by(nome='Prontos para Instalação').first()
-        if grupo_prontos:
+        grupo_prontos = Grupo.query.filter_by(nome='Prontos').first()
+        if grupo_prontos and orcamento.grupo_id != grupo_prontos.id:
             orcamento.grupo_id = grupo_prontos.id
+            orcamento.data_pronto = datetime.utcnow()
+            orcamento.status_atual = 'Agendar Instalação/Entrega'
             db.session.commit()
 
-    # Retorna o ORÇAMENTO PAI, para o JS checar se o grupo mudou
     return jsonify(orcamento.to_dict())
 
 @app.route('/api/orcamento/<int:orc_id>/move', methods=['PUT'])
 def move_orcamento(orc_id):
-    # Esta rota agora é usada apenas para movimentos manuais (ex: para Standby)
     orcamento = Orcamento.query.get(orc_id)
     if not orcamento:
         return jsonify({"error": "Orçamento não encontrado"}), 404
     
-    novo_grupo_id = request.json.get('novo_grupo_id')
+    data = request.json
+    novo_grupo_id = int(data.get('novo_grupo_id'))
+    if orcamento.grupo_id == novo_grupo_id:
+        return jsonify(orcamento.to_dict())
+
+    grupo_destino = Grupo.query.get(novo_grupo_id)
+    if not grupo_destino:
+        return jsonify({"error": "Grupo de destino não encontrado"}), 404
+
     orcamento.grupo_id = novo_grupo_id
+    
+    # Aplicar status e regras padrão ao mover
+    if grupo_destino.nome == 'Entrada de Orçamento':
+        orcamento.status_atual = 'Orçamento Aprovado'
+    elif grupo_destino.nome == 'Visitas e Medidas':
+        orcamento.status_atual = 'Agendar Visita'
+    elif grupo_destino.nome == 'Projetar':
+        orcamento.status_atual = 'Em Desenho'
+    elif grupo_destino.nome == 'Linha de Produção':
+        orcamento.status_atual = 'Não Iniciado'
+        # PONTO 2: Salva as datas do drag & drop
+        orcamento.data_entrada_producao = parse_datetime(data.get('data_entrada'))
+        orcamento.data_limite_producao = parse_datetime(data.get('data_limite'))
+        for tarefa in orcamento.tarefas:
+            tarefa.status = 'Não Iniciado'
+    elif grupo_destino.nome == 'Prontos':
+        orcamento.status_atual = 'Agendar Instalação/Entrega'
+        if not orcamento.data_pronto:
+             orcamento.data_pronto = datetime.utcnow()
+    elif grupo_destino.nome == 'StandBy':
+        orcamento.status_atual = 'Parado'
+        orcamento.grupo_origem_standby = orcamento.grupo_id
+    elif grupo_destino.nome == 'Instalados':
+        orcamento.status_atual = 'Instalado'
+        
     db.session.commit()
     
     return jsonify(orcamento.to_dict())
@@ -292,34 +488,34 @@ def move_orcamento(orc_id):
 @app.cli.command('init-db')
 def init_db_command():
     """Inicializa o banco de dados e cria os grupos fixos."""
-    db.drop_all() # Cuidado: apaga tudo
+    db.drop_all()
     db.create_all()
     
-    # Cria os grupos fixos na nova ordem
-    g1 = Grupo(nome='Entrada de Orçamentos', ordem=1)
+    g1 = Grupo(nome='Entrada de Orçamento', ordem=1)
     g2 = Grupo(nome='Visitas e Medidas', ordem=2)
-    g3 = Grupo(nome='Linha de Produção', ordem=3)
-    g4 = Grupo(nome='Prontos para Instalação', ordem=4) # NOVO GRUPO
-    g5 = Grupo(nome='Standby', ordem=5)
-    g6 = Grupo(nome='Instalados', ordem=6)
+    g3 = Grupo(nome='Projetar', ordem=3)
+    g4 = Grupo(nome='Linha de Produção', ordem=4)
+    g5 = Grupo(nome='Prontos', ordem=5)
+    g6 = Grupo(nome='StandBy', ordem=6)
+    g7 = Grupo(nome='Instalados', ordem=7)
     
-    db.session.add_all([g1, g2, g3, g4, g5, g6])
+    db.session.add_all([g1, g2, g3, g4, g5, g6, g7])
     db.session.commit()
-    print('Banco de dados inicializado e grupos criados.')
+    print('Banco de dados inicializado e grupos (7) criados.')
 
-# Função de setup para rodar com 'python app.py'
 def setup_database(app):
     with app.app_context():
         if not os.path.exists('workflow.db'):
              db.create_all()
              if not Grupo.query.first():
-                g1 = Grupo(nome='Entrada de Orçamentos', ordem=1)
+                g1 = Grupo(nome='Entrada de Orçamento', ordem=1)
                 g2 = Grupo(nome='Visitas e Medidas', ordem=2)
-                g3 = Grupo(nome='Linha de Produção', ordem=3)
-                g4 = Grupo(nome='Prontos para Instalação', ordem=4)
-                g5 = Grupo(nome='Standby', ordem=5)
-                g6 = Grupo(nome='Instalados', ordem=6)
-                db.session.add_all([g1, g2, g3, g4, g5, g6])
+                g3 = Grupo(nome='Projetar', ordem=3)
+                g4 = Grupo(nome='Linha de Produção', ordem=4)
+                g5 = Grupo(nome='Prontos', ordem=5)
+                g6 = Grupo(nome='StandBy', ordem=6)
+                g7 = Grupo(nome='Instalados', ordem=7)
+                db.session.add_all([g1, g2, g3, g4, g5, g6, g7])
                 db.session.commit()
                 print("DB e Grupos criados.")
 
