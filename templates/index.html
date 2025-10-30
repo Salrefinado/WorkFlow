@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Work Management</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 </head>
 <body>
 
@@ -34,49 +35,17 @@
         </section>
     </template>
 
-    <template id="row-template-entrada">
+    <template id="row-template-status">
         <tr class="monday-row" data-orcamento-id="">
-            <td class="col-orcamento">
-                <span class="orc-numero"></span> - <span class="orc-cliente"></span>
-            </td>
-            <td class="col-arquivos">
-                </td>
-            <td class="col-etapa1">
-                <div class="etapa-desc"></div>
-                <select class="status-select" data-etapa="etapa1">
-                    <option value="Aguardando">Aguardando</option>
-                    <option value="Tirar Medida">Tirar Medida</option>
-                    <option value="Em Produção">Em Produção</option>
-                    <option value="Instalar">Instalar</option>
-                    <option value="Instalado">Instalado</option>
-                </select>
-            </td>
-            <td class="col-etapa2">
-                <div class="etapa-desc"></div>
-                <select class="status-select" data-etapa="etapa2">
-                    <option value="Aguardando">Aguardando</option>
-                    <option value="Tirar Medida">Tirar Medida</option>
-                    <option value="Em Produção">Em Produção</option>
-                    <option value="Instalar">Instalar</option>
-                    <option value="Instalado">Instalado</option>
-                </select>
-            </td>
-        </tr>
+            </tr>
     </template>
     
     <template id="row-template-producao">
         <tr class="monday-row" data-orcamento-id="">
-            <td class="col-orcamento">
-                <span class="orc-numero"></span> - <span class="orc-cliente"></span>
-            </td>
-            <td class="col-arquivos">
-                </td>
-            <td class="col-tarefas-producao">
-                </td>
-        </tr>
+            </tr>
     </template>
     
-    <template id="row-template-default">
+    <template id="row-template-final">
          <tr class="monday-row" data-orcamento-id="">
             <td class="col-orcamento">
                 <span class="orc-numero"></span> - <span class="orc-cliente"></span>
@@ -84,7 +53,7 @@
             <td class="col-arquivos">
                 </td>
             <td class="col-status-final">
-                <span class="status-final-text"></span>
+                <span class="status-final-text" style="color: var(--status-instalado);">Instalado</span>
             </td>
         </tr>
     </template>
@@ -94,22 +63,91 @@
             <span class="tarefa-colaborador"></span>
             <span class="tarefa-item"></span>
             <select class="status-select-tarefa">
-                <option value="Não Iniciado">Não Iniciado</option>
-                <option value="Iniciou a Produção">Iniciou a Produção</option>
-                <option value="Fase de Acabamento">Fase de Acabamento</option>
-                <option value="Produção Finalizada">Produção Finalizada</option>
+                <option value="Não Iniciado" class="status-option-nao-iniciado">Não Iniciado</option>
+                <option value="Iniciou a Produção" class="status-option-iniciou">Iniciou a Produção</option>
+                <option value="Fase de Acabamento" class="status-option-acabamento">Fase de Acabamento</option>
+                <option value="Produção Finalizada" class="status-option-finalizada">Produção Finalizada</option>
+                <option value="Aguardando Vidro / Pedra" class="status-option-aguardando-vidro">Aguardando Vidro / Pedra</option>
+                <option value="Reforma em Andamento" class="status-option-reforma">Reforma em Andamento</option>
+                <option value="StandBy" class="status-option-standby-tarefa">StandBy</option>
             </select>
         </div>
     </template>
     
     <template id="arquivos-cell-template">
-        <ul class="file-list">
-            </ul>
+        <div class="file-list-icons">
+            </div>
         <label class="add-file-label">
             + Anexar
             <input type="file" class="manual-file-upload" />
         </label>
     </template>
+
+
+    <div id="modal-overlay" class="modal-overlay hidden"></div>
+
+    <div id="modal-visita" class="modal hidden">
+        <h4>Agendar Visita</h4>
+        <label for="modal-visita-data">Data da Visita:</label>
+        <input type="datetime-local" id="modal-visita-data">
+        
+        <label for="modal-visita-responsavel">Responsável (Renato, Paulo, etc.):</label>
+        <input type="text" id="modal-visita-responsavel" placeholder="Nome do responsável">
+        
+        <div class="modal-actions">
+            <button id="modal-visita-cancel" class="btn-secondary">Cancelar</button>
+            <button id="modal-visita-save" class="btn-primary">Salvar</button>
+        </div>
+    </div>
+
+    <div id="modal-instalacao" class="modal hidden">
+        <h4>Agendar Instalação/Entrega</h4>
+        <label for="modal-instalacao-data">Data da Instalação/Entrega:</label>
+        <input type="datetime-local" id="modal-instalacao-data">
+        
+        <label for="modal-instalacao-responsavel">Responsável:</label>
+        <input type="text" id="modal-instalacao-responsavel" placeholder="Nome do responsável">
+        
+        <div class="modal-actions">
+            <button id="modal-instalacao-cancel" class="btn-secondary">Cancelar</button>
+            <button id="modal-instalacao-save" class="btn-primary">Salvar</button>
+        </div>
+    </div>
+    
+    <div id="modal-instalado" class="modal hidden">
+        <h4>Confirmar Instalação</h4>
+        <p>Esta instalação se refere a qual etapa?</p>
+        
+        <div class="modal-actions-center">
+            <button id="modal-instalado-etapa1" class="btn-primary">Etapa 1</button>
+            <button id="modal-instalado-etapa2" class="btn-primary">Etapa 2</button>
+        </div>
+        <div class="modal-actions-center">
+             <button id="modal-instalado-cancel" class="btn-secondary">Cancelar</button>
+        </div>
+    </div>
+
+    <div id="modal-producao" class="modal hidden">
+        <h4>Definir Prazos de Produção</h4>
+        
+        <label for="modal-producao-data-entrada">Data de Entrada (Início):</label>
+        <input type="date" id="modal-producao-data-entrada">
+        
+        <label>Definir Data Limite (Entrega):</label>
+        <div class="modal-quick-days">
+            <button class="btn-secondary" data-dias="30">30 dias</button>
+            <button class="btn-secondary" data-dias="45">45 dias</button>
+            <input type="number" id="modal-producao-dias-manual" placeholder="Dias" min="1">
+        </div>
+        
+        <label for="modal-producao-data-limite">Data Limite Final:</label>
+        <input type="date" id="modal-producao-data-limite">
+        
+        <div class="modal-actions">
+            <button id="modal-producao-cancel" class="btn-secondary">Cancelar</button>
+            <button id="modal-producao-save" class="btn-primary">Salvar</button>
+        </div>
+    </div>
 
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
