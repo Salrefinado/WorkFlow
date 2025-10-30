@@ -8,14 +8,19 @@
     --color-border: #e6e9ef;
     --color-shadow: rgba(0,0,0,0.05);
     --color-primary: #0073ea;
+    --color-secondary-text: #555;
     
     /* Status Etapas */
-    --status-aguardando: #d3d3d3;
-    --status-medida: #fbbc05;
-    --status-producao: #4285f4;
-    --status-instalar: #9a40d3;
-    --status-instalado: #34a853;
-    
+    --status-default: #d3d3d3; /* Cinza Padrão */
+    --status-visita: #fbbc05; /* Amarelo/Laranja */
+    --status-projetar: #ff6d00; /* Laranja Escuro */
+    --status-producao: #4285f4; /* Azul */
+    --status-prontos: #00c853; /* Verde Claro */
+    --status-standby: #757575; /* Cinza Escuro */
+    --status-instalado: #34a853; /* Verde Escuro */
+    --status-liberado: #9a40d3; /* Roxo */
+    --status-perigo: #ea4335; /* Vermelho */
+
     /* Status Produção */
     --status-nao-iniciado: #c4c4c4;
     --status-iniciou: #fbbc05;
@@ -63,6 +68,18 @@ header h1 {
 .btn-primary:hover {
     background-color: #005bb5;
 }
+.btn-secondary {
+    background-color: #f0f2f5;
+    color: var(--color-secondary-text);
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.btn-secondary:hover {
+    background-color: #e6e9ef;
+}
 .file-input {
     margin-left: 10px;
 }
@@ -92,14 +109,14 @@ header h1 {
 }
 
 .table-wrapper {
-    overflow-x: auto; /* Permite scroll horizontal na tabela, se necessário */
+    overflow-x: auto;
 }
 
 /* --- Estrutura da Tabela (Estilo Monday) --- */
 .monday-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 800px; /* Garante que a tabela tenha uma largura mínima */
+    min-width: 1000px;
 }
 
 .monday-thead th {
@@ -118,7 +135,33 @@ header h1 {
     border-bottom: 1px solid var(--color-border);
     font-size: 0.95rem;
     vertical-align: middle;
+    color: var(--color-text-primary);
 }
+.col-data {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    min-width: 140px;
+}
+/* PONTO 2: Estilo para colunas de data de produção */
+.col-data-date {
+     font-size: 0.9rem;
+     color: var(--color-text-secondary);
+     min-width: 110px;
+     font-weight: 500;
+}
+
+
+.monday-row.sortable-ghost {
+    background-color: #e6e9ef;
+    opacity: 0.7;
+}
+.monday-row.sortable-chosen {
+    cursor: grabbing;
+}
+.monday-row {
+    cursor: grab;
+}
+
 
 .monday-row:last-child td {
     border-bottom: none;
@@ -153,26 +196,37 @@ header h1 {
     color: var(--color-text-secondary);
 }
 
-/* --- Célula de Arquivos --- */
+/* --- Célula de Arquivos (Ícones) --- */
 .col-arquivos {
-    min-width: 200px;
+    min-width: 150px;
 }
-.file-list {
+.file-list-icons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
     list-style: none;
     padding: 0;
     margin: 0 0 5px 0;
 }
-.file-list li {
-    margin-bottom: 3px;
-}
-.file-list a {
+.file-link {
+    display: inline-block;
+    font-size: 1.5rem;
     color: var(--color-primary);
     text-decoration: none;
-    font-size: 0.9rem;
+    padding: 2px;
+    border-radius: 4px;
+    line-height: 1;
 }
-.file-list a:hover {
-    text-decoration: underline;
+.file-link:hover {
+    background-color: #e6e9ef;
 }
+.file-link-pdf::before {
+    content: '📄'; 
+}
+.file-link-other::before {
+    content: '📎';
+}
+
 
 .add-file-label {
     font-size: 0.8rem;
@@ -184,28 +238,38 @@ header h1 {
     text-decoration: underline;
 }
 .manual-file-upload {
-    display: none; /* O input real fica oculto */
+    display: none;
 }
 
-/* --- Células de Etapa --- */
-.col-etapa1, .col-etapa2 {
-    min-width: 200px;
+.btn-agendar {
+    background-color: var(--status-prontos);
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
 }
-.etapa-desc {
-    font-size: 0.9rem;
-    color: var(--color-text-secondary);
-    margin-bottom: 5px;
+.btn-agendar:hover {
+    opacity: 0.8;
+}
+
+
+/* --- Célula de Status (Status Orçamento e Status Tarefa) --- */
+.col-status {
+    min-width: 220px;
 }
 .status-final-text {
     font-weight: 600;
     color: var(--status-instalado);
 }
 
-/* --- Seletores de Status (Pílulas Coloridas) --- */
-select.status-select, select.status-select-tarefa {
+select.status-select-orcamento, 
+select.status-select-tarefa {
     border: none;
     padding: 6px 10px;
-    border-radius: 15px; /* Mais arredondado */
+    border-radius: 15px;
     font-weight: 600;
     color: #fff;
     cursor: pointer;
@@ -218,25 +282,142 @@ select.status-select, select.status-select-tarefa {
     background-size: 0.65em auto;
     background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-13%205.4A17.5%2017.5%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2013l128%20128c3.6%203.6%207.8%205.4%2013%205.4s9.4-1.8%2013-5.4l128-128c3.6-3.6%205.4-7.8%205.4-13%200-4.9-1.8-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
 }
+select.status-select-orcamento option,
+select.status-select-tarefa option {
+     background-color: #fff;
+     color: #333;
+}
 
-/* Cores dinâmicas para status (Etapas) */
-select[data-etapa][value="Aguardando"],
-option[value="Aguardando"] { background-color: var(--status-aguardando); color: #333; }
-select[data-etapa][value="Tirar Medida"],
-option[value="Tirar Medida"] { background-color: var(--status-medida); }
-select[data-etapa][value="Em Produção"],
-option[value="Em Produção"] { background-color: var(--status-producao); }
-select[data-etapa][value="Instalar"],
-option[value="Instalar"] { background-color: var(--status-instalar); }
-select[data-etapa][value="Instalado"],
-option[value="Instalado"] { background-color: var(--status-instalado); }
 
-/* Cores dinâmicas para status (Produção) */
+/* Cores dinâmicas para status (Produção - TAREFAS) */
 select.status-select-tarefa[value="Não Iniciado"],
-option[value="Não Iniciado"] { background-color: var(--status-nao-iniciado); color: #333;}
+option.status-option-nao-iniciado { background-color: var(--status-nao-iniciado); color: #333 !important;}
+
 select.status-select-tarefa[value="Iniciou a Produção"],
-option[value="Iniciou a Produção"] { background-color: var(--status-iniciou); }
+option.status-option-iniciou { background-color: var(--status-iniciou); color: #fff !important;}
+
 select.status-select-tarefa[value="Fase de Acabamento"],
-option[value="Fase de Acabamento"] { background-color: var(--status-acabamento); }
+option.status-option-acabamento { background-color: var(--status-producao); color: #fff !important;}
+
 select.status-select-tarefa[value="Produção Finalizada"],
-option[value="Produção Finalizada"] { background-color: var(--status-finalizada); }
+option.status-option-finalizada { background-color: var(--status-finalizada); color: #fff !important;}
+
+select.status-select-tarefa[value="Aguardando Vidro / Pedra"],
+option.status-option-aguardando-vidro { background-color: var(--status-visita); color: #fff !important;}
+
+select.status-select-tarefa[value="Reforma em Andamento"],
+option.status-option-reforma { background-color: var(--status-projetar); color: #fff !important;}
+
+select.status-select-tarefa[value="StandBy"],
+option.status-option-standby-tarefa { background-color: var(--status-standby); color: #fff !important;}
+
+
+/* Cores dinâmicas para status (ORÇAMENTO) */
+select.status-select-orcamento[value="Orçamento Aprovado"],
+select.status-select-orcamento[value="Agendar Visita"] {
+    background-color: var(--status-default); color: #333;
+}
+select.status-select-orcamento[value="Visita Agendada"],
+select.status-select-orcamento[value="Mandar para Produção"] {
+    background-color: var(--status-visita);
+}
+select.status-select-orcamento[value="Desenhar"],
+select.status-select-orcamento[value="Em Desenho"],
+select.status-select-orcamento[value="Aprovado para Produção"] {
+    background-color: var(--status-projetar);
+}
+select.status-select-orcamento[value="Em Produção"] {
+    background-color: var(--status-producao);
+}
+select.status-select-orcamento[value="Agendar Instalação/Entrega"],
+select.status-select-orcamento[value="Instalação Agendada"] {
+    background-color: var(--status-prontos);
+}
+select.status-select-orcamento[value="Instalado"] {
+    background-color: var(--status-instalado);
+}
+select.status-select-orcamento[value="Liberado"] {
+    background-color: var(--status-liberado);
+}
+select.status-select-orcamento[value="Aguardando Cliente"],
+select.status-select-orcamento[value="Aguardando Arq/Eng"],
+select.status-select-orcamento[value="Aguardando Obra"],
+select.status-select-orcamento[value="Parado"],
+select.status-select-orcamento[value="StandBy"] {
+    background-color: var(--status-standby);
+}
+
+
+/* --- Estilos dos Modais --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+.modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    z-index: 1001;
+    min-width: 350px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.modal.hidden,
+.modal-overlay.hidden {
+    display: none;
+}
+
+.modal h4 {
+    margin: 0;
+    font-size: 1.3rem;
+    color: var(--color-text-primary);
+}
+.modal label {
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+.modal input[type="datetime-local"],
+.modal input[type="date"],
+.modal input[type="text"] {
+    width: calc(100% - 22px);
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+/* PONTO 2: Estilos para modal de produção */
+.modal-quick-days {
+    display: flex;
+    gap: 10px;
+}
+.modal-quick-days input[type="number"] {
+    width: 60px;
+}
+
+
+.modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+.modal .modal-actions-center {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+}
