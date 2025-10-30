@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Work Management</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <header>
+        <h1>Work Management</h1>
+        <div class="upload-container">
+            <label for="zip-upload">Novo Orçamento (.zip):</label>
+            <input type="file" id="zip-upload" accept=".zip" class="file-input">
+            <button id="upload-button" class="btn-primary">Enviar</button>
+        </div>
+    </header>
+
+    <main id="workflow-board" class="workflow-board">
+        </main>
+
+    <template id="grupo-template">
+        <section class="monday-group" data-group-id="">
+            <h2 class="group-title"></h2>
+            <div class="table-wrapper">
+                <table class="monday-table">
+                    <thead class="monday-thead">
+                        </thead>
+                    <tbody class="monday-tbody">
+                        </tbody>
+                </table>
+            </div>
+        </section>
+    </template>
+
+    <template id="row-template-entrada">
+        <tr class="monday-row" data-orcamento-id="">
+            <td class="col-orcamento">
+                <span class="orc-numero"></span> - <span class="orc-cliente"></span>
+            </td>
+            <td class="col-arquivos">
+                </td>
+            <td class="col-etapa1">
+                <div class="etapa-desc"></div>
+                <select class="status-select" data-etapa="etapa1">
+                    <option value="Aguardando">Aguardando</option>
+                    <option value="Tirar Medida">Tirar Medida</option>
+                    <option value="Em Produção">Em Produção</option>
+                    <option value="Instalar">Instalar</option>
+                    <option value="Instalado">Instalado</option>
+                </select>
+            </td>
+            <td class="col-etapa2">
+                <div class="etapa-desc"></div>
+                <select class="status-select" data-etapa="etapa2">
+                    <option value="Aguardando">Aguardando</option>
+                    <option value="Tirar Medida">Tirar Medida</option>
+                    <option value="Em Produção">Em Produção</option>
+                    <option value="Instalar">Instalar</option>
+                    <option value="Instalado">Instalado</option>
+                </select>
+            </td>
+        </tr>
+    </template>
+    
+    <template id="row-template-producao">
+        <tr class="monday-row" data-orcamento-id="">
+            <td class="col-orcamento">
+                <span class="orc-numero"></span> - <span class="orc-cliente"></span>
+            </td>
+            <td class="col-arquivos">
+                </td>
+            <td class="col-tarefas-producao">
+                </td>
+        </tr>
+    </template>
+    
+    <template id="row-template-default">
+         <tr class="monday-row" data-orcamento-id="">
+            <td class="col-orcamento">
+                <span class="orc-numero"></span> - <span class="orc-cliente"></span>
+            </td>
+            <td class="col-arquivos">
+                </td>
+            <td class="col-status-final">
+                <span class="status-final-text"></span>
+            </td>
+        </tr>
+    </template>
+
+    <template id="tarefa-producao-template">
+        <div class="tarefa-producao" data-tarefa-id="">
+            <span class="tarefa-colaborador"></span>
+            <span class="tarefa-item"></span>
+            <select class="status-select-tarefa">
+                <option value="Não Iniciado">Não Iniciado</option>
+                <option value="Iniciou a Produção">Iniciou a Produção</option>
+                <option value="Fase de Acabamento">Fase de Acabamento</option>
+                <option value="Produção Finalizada">Produção Finalizada</option>
+            </select>
+        </div>
+    </template>
+    
+    <template id="arquivos-cell-template">
+        <ul class="file-list">
+            </ul>
+        <label class="add-file-label">
+            + Anexar
+            <input type="file" class="manual-file-upload" />
+        </label>
+    </template>
+
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
