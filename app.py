@@ -143,7 +143,8 @@ class Orcamento(db.Model):
             "etapa1_descricao": self.etapa1_descricao,
             "etapa2_descricao": self.etapa2_descricao,
 
-            "tarefas": [t.to_dict() for t in self.tarefas],
+            # MODIFICAÇÃO: Ordenar tarefas por colaborador e depois por item
+            "tarefas": sorted([t.to_dict() for t in self.tarefas], key=lambda x: (x['colaborador'], x['item_descricao'])),
             "arquivos": [a.to_dict() for a in self.arquivos]
         }
 
@@ -189,6 +190,8 @@ def get_workflow():
     workflow_data = []
     for grupo in grupos:
         orcamentos_data = [o.to_dict() for o in grupo.orcamentos]
+        # Ordenar orçamentos dentro do grupo (opcional, mas bom para consistência)
+        # ... (lógica de ordenação se necessário) ...
         workflow_data.append({
             "id": grupo.id,
             "nome": grupo.nome,
@@ -554,7 +557,9 @@ def move_orcamento(orc_id):
              orcamento.data_pronto = datetime.utcnow()
     elif grupo_destino.nome == 'StandBy':
         orcamento.status_atual = 'Parado'
-        orcamento.grupo_origem_standby = orcamento.grupo_id
+        # Bug fix: Nao setar grupo origem se ja estiver em standby
+        if orcamento.grupo_origem_standby is None:
+            orcamento.grupo_origem_standby = orcamento.grupo_id 
     elif grupo_destino.nome == 'Instalados':
         orcamento.status_atual = 'Instalado'
         
@@ -562,6 +567,34 @@ def move_orcamento(orc_id):
     
     return jsonify(orcamento.to_dict())
 
+# --- NOVO: Rota para adicionar tarefa de produção ---
+@app.route('/api/orcamento/<int:orc_id>/add_tarefa', methods=['POST'])
+def add_tarefa_to_orcamento(orc_id):
+    orcamento = Orcamento.query.get(orc_id)
+    if not orcamento:
+        return jsonify({"error": "Orçamento não encontrado"}), 404
+        
+    data = request.json
+    colaborador = data.get('colaborador')
+    item_descricao = data.get('item_descricao')
+    
+    if not colaborador or not item_descricao:
+        return jsonify({"error": "Colaborador e Item são obrigatórios"}), 400
+        
+    try:
+        nova_tarefa = TarefaProducao(
+            orcamento_id=orc_id,
+            colaborador=colaborador,
+            item_descricao=item_descricao,
+            status='Não Iniciado' # Padrão
+        )
+        db.session.add(nova_tarefa)
+        db.session.commit()
+        return jsonify(nova_tarefa.to_dict()), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 # --- Comandos de CLI para setup ---
 @app.cli.command('init-db')
