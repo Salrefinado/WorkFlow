@@ -51,6 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalInstalacao = document.getElementById('modal-instalacao');
     const modalInstalado = document.getElementById('modal-instalado');
     const modalProducao = document.getElementById('modal-producao');
+    // NOVO: Modal de Adicionar Tarefa
+    const modalAddTarefa = document.getElementById('modal-add-tarefa');
+    const modalTarefaSave = document.getElementById('modal-tarefa-save');
+    const modalTarefaCancel = document.getElementById('modal-tarefa-cancel');
 
     /**
      * Carrega todo o workflow da API e renderiza no quadro.
@@ -91,6 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const clone = grupoTemplate.content.cloneNode(true);
         const grupoSection = clone.querySelector('.monday-group');
         grupoSection.dataset.groupId = grupo.id;
+        // NOVO: Adiciona a classe 'collapsed' por padrão (está no template, mas garantido aqui)
+        // grupoSection.classList.add('collapsed'); // Movido para o template
+        
         grupoSection.querySelector('.group-title').textContent = grupo.nome;
         
         const thead = clone.querySelector('.monday-thead');
@@ -280,8 +287,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return row;
     }
     
+    // --- NOVO: Funções para "Linha de Produção" ---
+
     /**
      * Renderiza a linha para o grupo "Linha de Produção".
+     * Esta função agora cria a célula de tarefas e inicia com a visualização comprimida.
      */
     function renderRowProducao(orcamento) {
         const clone = rowTemplateProducao.content.cloneNode(true);
@@ -295,13 +305,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tarefasCell = document.createElement('td');
         tarefasCell.className = 'col-tarefas-producao';
-        orcamento.tarefas.forEach(tarefa => {
-            const tarefaEl = renderTarefa(tarefa);
-            tarefasCell.appendChild(tarefaEl);
-        });
+        
+        // Guarda a referência dos dados das tarefas na própria célula para fácil acesso
+        tarefasCell.dataset.tarefas = JSON.stringify(orcamento.tarefas);
+        
+        // Inicia na visualização comprimida (NOVA LÓGICA)
+        renderTarefasCompressed(orcamento.tarefas, orcamento.id, tarefasCell);
+        
         row.appendChild(tarefasCell);
         
         return row;
+    }
+
+    /**
+     * Renderiza a visualização COMPRIMIDA (agora um botão de status)
+     */
+    function renderTarefasCompressed(tarefas, orcamentoId, cell) {
+        // 1. Calcular status agregado
+        let hasStarted = tarefas.some(t => t.status !== 'Não Iniciado');
+        let aggregateStatus = hasStarted ? 'Em Produção' : 'Não Iniciado';
+        
+        // 2. Limpar célula e adicionar contêiner
+        cell.innerHTML = '';
+        const container = document.createElement('div');
+        container.className = 'tarefas-compressed';
+
+        // 3. Criar o botão de status
+        const statusButton = document.createElement('button');
+        statusButton.className = 'btn-status-expand status-select-tarefa'; // Reutiliza estilos
+        statusButton.textContent = aggregateStatus;
+        statusButton.setAttribute('value', aggregateStatus); // Para CSS
+        statusButton.dataset.action = 'expand'; // Ação para o event listener
+        
+        container.appendChild(statusButton);
+        cell.appendChild(container);
+        
+        // Botão "+ Adicionar Tarefa" NÃO é adicionado aqui
+    }
+
+    /**
+     * Renderiza a visualização EXPANDIDA (agora agrupada por colaborador)
+     */
+    function renderTarefasExpanded(tarefas, orcamentoId, cell) {
+        // 1. Limpar a célula e adicionar contêiner
+        cell.innerHTML = '';
+        const expandedContainer = document.createElement('div');
+        expandedContainer.className = 'tarefas-expanded';
+
+        // 2. Agrupar tarefas por colaborador
+        const agrupado = tarefas.reduce((acc, tarefa) => {
+            if (!acc[tarefa.colaborador]) {
+                acc[tarefa.colaborador] = [];
+            }
+            acc[tarefa.colaborador].push(tarefa); // Salva o objeto tarefa inteiro
+            return acc;
+        }, {});
+
+        // 3. Renderizar cada grupo
+        for (const colaborador in agrupado) {
+            // Adiciona o cabeçalho do colaborador
+            const header = document.createElement('div');
+            header.className = 'tarefa-colaborador-header';
+            header.innerHTML = `<strong>${colaborador}</strong>`;
+            expandedContainer.appendChild(header);
+            
+            // Pega os itens
+            const items = agrupado[colaborador];
+            
+            // Renderiza cada tarefa (item + status)
+            items.forEach(tarefa => {
+                const tarefaEl = renderTarefa(tarefa); // renderTarefa agora só cuida do item+status
+                expandedContainer.appendChild(tarefaEl);
+            });
+        }
+        
+        cell.appendChild(expandedContainer);
+
+        // 4. Adicionar botões de ação (Recolher e Adicionar)
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'tarefas-actions';
+        actionsContainer.innerHTML = `
+            <button class="btn-toggle-tarefas btn-secondary" data-action="collapse">Recolher</button>
+            <button class="btn-add-tarefa">+ Adicionar Tarefa</button>
+        `;
+        cell.appendChild(actionsContainer);
     }
     
     /**
@@ -324,14 +411,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Renderiza uma sub-tarefa no cartão de Produção.
+     * Renderiza uma sub-tarefa (MODIFICADO: sem colaborador)
      */
     function renderTarefa(tarefa) {
         const clone = tarefaTemplate.content.cloneNode(true);
         const tarefaDiv = clone.querySelector('.tarefa-producao');
         tarefaDiv.dataset.tarefaId = tarefa.id;
         
-        tarefaDiv.querySelector('.tarefa-colaborador').textContent = tarefa.colaborador;
+        // NÃO define mais o colaborador aqui
         tarefaDiv.querySelector('.tarefa-item').textContent = tarefa.item_descricao;
         
         const selectStatus = tarefaDiv.querySelector('.status-select-tarefa');
@@ -404,11 +491,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     /**
-     * Atualiza a cor de fundo de um <select> com base no valor.
+     * Atualiza a cor de fundo de um <select> ou <button> com base no valor.
      */
-    function updateSelectColor(selectElement) {
-        selectElement.removeAttribute('value');
-        selectElement.setAttribute('value', selectElement.value);
+    function updateSelectColor(element) {
+        element.removeAttribute('value');
+        element.setAttribute('value', element.value || element.textContent);
     }
     
     // --- LÓGICA DE MODAIS E ATUALIZAÇÃO DE STATUS ---
@@ -429,6 +516,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modalInstalacao.classList.add('hidden');
         modalInstalado.classList.add('hidden');
         modalProducao.classList.add('hidden');
+        modalAddTarefa.classList.add('hidden'); // NOVO
         
         // Limpa formulários
         document.getElementById('form-criar-manual').reset();
@@ -443,6 +531,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modal-producao-data-entrada').value = '';
         document.getElementById('modal-producao-data-limite').value = '';
         document.getElementById('modal-producao-dias-manual').value = '';
+        
+        // NOVO: Limpa modal de tarefa
+        document.getElementById('modal-tarefa-orcamento-id').value = '';
+        document.getElementById('modal-tarefa-colaborador').value = '';
+        document.getElementById('modal-tarefa-item').value = '';
     }
 
     /**
@@ -627,6 +720,46 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
     }
+    
+    // NOVO: Abre o modal para adicionar uma nova tarefa
+    function openAddTarefaModal(buttonEl) {
+        const orcamentoId = buttonEl.closest('.monday-row').dataset.orcamentoId;
+        document.getElementById('modal-tarefa-orcamento-id').value = orcamentoId;
+        showModal(modalAddTarefa);
+    }
+    
+    // NOVO: Envia a nova tarefa para a API
+    async function handleAddTarefaSubmit() {
+        const orcamentoId = document.getElementById('modal-tarefa-orcamento-id').value;
+        const colaborador = document.getElementById('modal-tarefa-colaborador').value;
+        const item_descricao = document.getElementById('modal-tarefa-item').value;
+
+        if (!colaborador || !item_descricao) {
+            return alert('Colaborador e Item são obrigatórios.');
+        }
+
+        try {
+            const response = await fetch(`/api/orcamento/${orcamentoId}/add_tarefa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    colaborador: colaborador,
+                    item_descricao: item_descricao
+                })
+            });
+            
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            
+            hideModals();
+            // Recarrega o board para mostrar a nova tarefa
+            await loadWorkflow(); 
+
+        } catch (error) {
+            console.error('Erro ao adicionar tarefa:', error);
+            alert(`Erro: ${error.message}`);
+        }
+    }
 
 
     /**
@@ -716,6 +849,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error);
             
+            // NOVO: Atualiza o dataset da célula para a próxima renderização comprimida
+            const cell = select.closest('.col-tarefas-producao');
+            cell.dataset.tarefas = JSON.stringify(result.tarefas);
+            
             if (result.grupo_id != grupoIdAtual) {
                 loadWorkflow();
             }
@@ -726,6 +863,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Erro ao atualizar status da tarefa:', error);
+        }
+    }
+    
+    // NOVO: Lida com o clique para expandir/recolher tarefas
+    function handleToggleTarefas(buttonEl) {
+        // Agora o botão pode ser o .btn-status-expand ou .btn-toggle-tarefas
+        const action = buttonEl.dataset.action;
+        const cell = buttonEl.closest('.col-tarefas-producao');
+        const orcamentoId = buttonEl.closest('.monday-row').dataset.orcamentoId;
+        const tarefas = JSON.parse(cell.dataset.tarefas);
+        
+        if (action === 'expand') {
+            renderTarefasExpanded(tarefas, orcamentoId, cell);
+        } else {
+            renderTarefasCompressed(tarefas, orcamentoId, cell);
+        }
+    }
+    
+    // NOVO: Lida com o clique para expandir/recolher GRUPOS (Accordion)
+    function handleGroupToggle(e) {
+        if (e.target.classList.contains('group-title')) {
+            const group = e.target.closest('.monday-group');
+            if (group) {
+                group.classList.toggle('collapsed');
+            }
         }
     }
     
@@ -815,6 +977,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('form-criar-manual').addEventListener('submit', handleCriarManualSubmit);
+    
+    // NOVO: Listeners para o modal de adicionar tarefa
+    modalTarefaSave.addEventListener('click', handleAddTarefaSubmit);
+    modalTarefaCancel.addEventListener('click', hideModals);
+
 
     // Delegação de eventos
     board.addEventListener('change', (e) => {
@@ -824,6 +991,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     board.addEventListener('click', async (e) => {
+        // Lógica do botão "Agendar"
         if (e.target.classList.contains('btn-agendar')) {
             const orcamentoId = e.target.dataset.orcamentoId;
             try {
@@ -837,10 +1005,23 @@ document.addEventListener('DOMContentLoaded', () => {
                  }
             }
         }
+        
+        // NOVO: Lógica do Accordion de Grupos
+        handleGroupToggle(e);
+        
+        // NOVO: Lógica dos botões de Tarefa (Expandir/Recolher/Adicionar)
+        const toggleBtn = e.target.closest('.btn-toggle-tarefas, .btn-status-expand');
+        if (toggleBtn) {
+            handleToggleTarefas(toggleBtn);
+        }
+        
+        if (e.target.classList.contains('btn-add-tarefa')) {
+            openAddTarefaModal(e.target);
+        }
     });
 
     modalOverlay.addEventListener('click', () => {
-        // Não fecha
+        // Não fecha ao clicar no overlay
     });
 
     loadWorkflow();
