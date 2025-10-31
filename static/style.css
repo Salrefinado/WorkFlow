@@ -118,7 +118,33 @@ header h1 {
     margin: 0;
     color: var(--color-primary);
     border-bottom: 1px solid var(--color-border);
+    /* NOVO: Estilos para Accordion */
+    cursor: pointer;
+    position: relative;
 }
+
+/* NOVO: Indicador de Accordion */
+.group-title::before {
+    content: '▼ '; /* Expandido */
+    font-size: 0.8em;
+    margin-right: 5px;
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+.monday-group.collapsed .group-title::before {
+    content: '► '; /* Recolhido */
+    transform: rotate(-90deg);
+}
+.monday-group.collapsed .group-title::before {
+     transform: rotate(0deg);
+}
+
+/* NOVO: Esconde a tabela quando recolhido */
+.monday-group.collapsed .table-wrapper {
+    display: none;
+}
+/* END NOVO */
+
 
 .table-wrapper {
     overflow-x: auto;
@@ -188,20 +214,97 @@ header h1 {
     font-size: 0.9em;
 }
 
-/* --- Célula de Tarefas de Produção --- */
+/* --- Célula de Tarefas de Produção (NOVOS ESTILOS) --- */
 .col-tarefas-producao {
     display: flex;
     flex-direction: column;
     gap: 8px;
     min-width: 350px;
+    vertical-align: top !important; /* Alinha no topo */
 }
+
+/* Visualização Comprimida (agora é um botão) */
+.tarefas-compressed {
+    display: flex;
+}
+.btn-status-expand {
+    /* Reutiliza estilos do select */
+    border: none;
+    padding: 6px 10px;
+    border-radius: 15px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    text-align: left;
+}
+.btn-status-expand::after {
+    content: '...'; /* Indica que é expansível */
+    margin-left: 8px;
+    font-weight: bold;
+}
+
+/* Visualização Expandida (agora agrupada) */
+.tarefas-expanded {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.tarefa-colaborador-header {
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    margin-top: 5px;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 3px;
+}
+/* Recua os itens abaixo do header */
 .tarefa-producao {
+    margin-left: 15px;
     display: grid;
-    grid-template-columns: 80px 1fr 1fr;
+    /* Colaborador removido, ajusta colunas */
+    grid-template-columns: 1.5fr 1fr; 
     gap: 5px;
     font-size: 0.9rem;
     align-items: center;
 }
+
+/* Controles (Expandir/Adicionar) */
+.tarefas-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    border-top: 1px solid var(--color-border);
+    padding-top: 8px;
+}
+.btn-toggle-tarefas, 
+.btn-add-tarefa {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-toggle-tarefas {
+    background-color: #f0f2f5;
+    color: var(--color-secondary-text);
+    border: 1px solid #ccc;
+}
+.btn-add-tarefa {
+    background-color: var(--status-prontos);
+    color: white;
+    border: none;
+    font-weight: 500;
+}
+/* Esconde o botão de adicionar na visão comprimida */
+.tarefas-compressed + .tarefas-actions {
+    display: none;
+}
+/* --- FIM NOVOS ESTILOS PRODUÇÃO --- */
+
+
 .tarefa-colaborador {
     font-weight: 600;
     color: var(--color-text-secondary);
@@ -276,8 +379,10 @@ header h1 {
     color: var(--status-instalado);
 }
 
+/* ATUALIZADO: Aplica a <select> E <button> */
 select.status-select-orcamento, 
-select.status-select-tarefa {
+select.status-select-tarefa,
+button.status-select-tarefa { /* Adicionado button */
     border: none;
     padding: 6px 10px;
     border-radius: 15px;
@@ -288,6 +393,11 @@ select.status-select-tarefa {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
+}
+
+/* Estilos que SÓ se aplicam a <select> */
+select.status-select-orcamento,
+select.status-select-tarefa {
     background-position: right 10px center;
     background-repeat: no-repeat;
     background-size: 0.65em auto;
@@ -300,26 +410,36 @@ select.status-select-tarefa option {
 }
 
 
-/* Cores dinâmicas para status (Produção - TAREFAS) */
+/* Cores dinâmicas para status (Produção - TAREFAS) - ATUALIZADO */
 select.status-select-tarefa[value="Não Iniciado"],
+button.status-select-tarefa[value="Não Iniciado"],
 option.status-option-nao-iniciado { background-color: var(--status-nao-iniciado); color: #333 !important;}
 
+/* NOVO: Cor para o status agregado "Em Produção" */
+select.status-select-tarefa[value="Em Produção"],
+button.status-select-tarefa[value="Em Produção"],
 select.status-select-tarefa[value="Iniciou a Produção"],
+button.status-select-tarefa[value="Iniciou a Produção"],
 option.status-option-iniciou { background-color: var(--status-iniciou); color: #fff !important;}
 
 select.status-select-tarefa[value="Fase de Acabamento"],
+button.status-select-tarefa[value="Fase de Acabamento"],
 option.status-option-acabamento { background-color: var(--status-producao); color: #fff !important;}
 
 select.status-select-tarefa[value="Produção Finalizada"],
+button.status-select-tarefa[value="Produção Finalizada"],
 option.status-option-finalizada { background-color: var(--status-finalizada); color: #fff !important;}
 
 select.status-select-tarefa[value="Aguardando Vidro / Pedra"],
+button.status-select-tarefa[value="Aguardando Vidro / Pedra"],
 option.status-option-aguardando-vidro { background-color: var(--status-visita); color: #fff !important;}
 
 select.status-select-tarefa[value="Reforma em Andamento"],
+button.status-select-tarefa[value="Reforma em Andamento"],
 option.status-option-reforma { background-color: var(--status-projetar); color: #fff !important;}
 
 select.status-select-tarefa[value="StandBy"],
+button.status-select-tarefa[value="StandBy"],
 option.status-option-standby-tarefa { background-color: var(--status-standby); color: #fff !important;}
 
 
@@ -408,13 +528,15 @@ select.status-select-orcamento[value="StandBy"] {
 .modal input[type="date"],
 .modal input[type="text"],
 .modal input[type="file"],
+.modal input[type="number"],
 .modal textarea {
-    width: calc(100% - 22px);
+    width: 100%; /* Simplificado */
     padding: 8px 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 1rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    box-sizing: border-box; /* Garante que o padding não estoure a largura */
 }
 .modal textarea {
     min-height: 60px;
@@ -468,7 +590,7 @@ select.status-select-orcamento[value="StandBy"] {
     gap: 10px;
 }
 .modal-quick-days input[type="number"] {
-    width: 60px;
+    width: 70px; /* Um pouco mais de espaço */
 }
 
 
