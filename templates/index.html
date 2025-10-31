@@ -11,10 +11,13 @@
 
     <header>
         <h1>Work Management</h1>
-        <div class="upload-container">
-            <label for="zip-upload">Novo Orçamento (.zip):</label>
-            <input type="file" id="zip-upload" accept=".zip" class="file-input">
-            <button id="upload-button" class="btn-primary">Enviar</button>
+        <div class="header-actions">
+            <div class="upload-container">
+                <label for="zip-upload">Novo Orçamento (.zip):</label>
+                <input type="file" id="zip-upload" accept=".zip" class="file-input">
+                <button id="upload-button" class="btn-primary">Enviar</button>
+            </div>
+            <button id="btn-criar-manual" class="btn-primary">Criar Orçamento Manual</button>
         </div>
     </header>
 
@@ -27,9 +30,9 @@
             <div class="table-wrapper">
                 <table class="monday-table">
                     <thead class="monday-thead">
-                        </thead>
+                    </thead>
                     <tbody class="monday-tbody">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
         </section>
@@ -37,12 +40,12 @@
 
     <template id="row-template-status">
         <tr class="monday-row" data-orcamento-id="">
-            </tr>
+        </tr>
     </template>
     
     <template id="row-template-producao">
         <tr class="monday-row" data-orcamento-id="">
-            </tr>
+        </tr>
     </template>
     
     <template id="row-template-final">
@@ -51,7 +54,7 @@
                 <span class="orc-numero"></span> - <span class="orc-cliente"></span>
             </td>
             <td class="col-arquivos">
-                </td>
+            </td>
             <td class="col-status-final">
                 <span class="status-final-text" style="color: var(--status-instalado);">Instalado</span>
             </td>
@@ -76,7 +79,7 @@
     
     <template id="arquivos-cell-template">
         <div class="file-list-icons">
-            </div>
+        </div>
         <label class="add-file-label">
             + Anexar
             <input type="file" class="manual-file-upload" />
@@ -86,14 +89,68 @@
 
     <div id="modal-overlay" class="modal-overlay hidden"></div>
 
+    <div id="modal-criar-orcamento" class="modal hidden">
+        <h4>Criar Novo Orçamento</h4>
+        <form id="form-criar-manual">
+            <label for="modal-criar-numero">Número do Orçamento:</label>
+            <input type="text" id="modal-criar-numero" name="numero_orcamento" required>
+            
+            <label for="modal-criar-cliente">Nome do Cliente:</label>
+            <input type="text" id="modal-criar-cliente" name="nome_cliente" required>
+            
+            <label for="modal-criar-arquivo">Anexar Arquivo (Opcional):</label>
+            <input type="file" id="modal-criar-arquivo" name="arquivo">
+            
+            <label>Itens de Produção (Opcional):</label>
+            <div class="item-group-container">
+                <h5>Edison</h5>
+                <div class="item-button-group">
+                    <button type="button" class="btn-item-select" data-item="Porta Guilhotina">Porta Guilhotina</button>
+                    <button type="button" class="btn-item-select" data-item="Tampa Vidro">Tampa Vidro</button>
+                    <button type="button" class="btn-item-select" data-item="Lareira">Lareira</button>
+                </div>
+                <h5>Luiz</h5>
+                <div class="item-button-group">
+                    <button type="button" class="btn-item-select" data-item="Parrila">Parrila</button>
+                    <button type="button" class="btn-item-select" data-item="Regulagem de Balanço">Regulagem de Balanço</button>
+                    <button type="button" class="btn-item-select" data-item="Giratorio">Giratorio</button>
+                    <button type="button" class="btn-item-select" data-item="Sistema Motor">Sistema Motor</button>
+                    <button type="button" class="btn-item-select" data-item="Moldura">Moldura</button>
+                    <button type="button" class="btn-item-select" data-item="Base">Base</button>
+                </div>
+                <h5>Hélio</h5>
+                <div class="item-button-group">
+                    <button type="button" class="btn-item-select" data-item="Coifa e Chaminé">Coifa e Chaminé</button>
+                    <button type="button" class="btn-item-select" data-item="Coifa">Coifa</button>
+                    <button type="button" class="btn-item-select" data-item="Gavetão">Gavetão</button>
+                    <button type="button" class="btn-item-select" data-item="Revestimento">Revestimento</button>
+                </div>
+                <h5>José</h5>
+                <div class="item-button-group">
+                    <button type="button" class="btn-item-select" data-item="Grelhas">Grelhas</button>
+                    <button type="button" class="btn-item-select" data-item="Espetos">Espetos</button>
+                    <button type="button" class="btn-item-select" data-item="Sistema Elevar Manual">Sistema Elevar Manual</button>
+                </div>
+                <h5>Anderson</h5>
+                <div class="item-button-group">
+                    <button type="button" class="btn-item-select" data-item="Chaminé Lareira">Chaminé Lareira</button>
+                    <button type="button" class="btn-item-select" data-item="Tampa Churrasqueira">Tampa Churrasqueira</button>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button id="modal-criar-cancel" type="button" class="btn-secondary">Cancelar</button>
+                <button id="modal-criar-save" type="submit" class="btn-primary">Salvar</button>
+            </div>
+        </form>
+    </div>
+
     <div id="modal-visita" class="modal hidden">
         <h4>Agendar Visita</h4>
         <label for="modal-visita-data">Data da Visita:</label>
         <input type="datetime-local" id="modal-visita-data">
-        
         <label for="modal-visita-responsavel">Responsável (Renato, Paulo, etc.):</label>
         <input type="text" id="modal-visita-responsavel" placeholder="Nome do responsável">
-        
         <div class="modal-actions">
             <button id="modal-visita-cancel" class="btn-secondary">Cancelar</button>
             <button id="modal-visita-save" class="btn-primary">Salvar</button>
@@ -104,10 +161,8 @@
         <h4>Agendar Instalação/Entrega</h4>
         <label for="modal-instalacao-data">Data da Instalação/Entrega:</label>
         <input type="datetime-local" id="modal-instalacao-data">
-        
         <label for="modal-instalacao-responsavel">Responsável:</label>
         <input type="text" id="modal-instalacao-responsavel" placeholder="Nome do responsável">
-        
         <div class="modal-actions">
             <button id="modal-instalacao-cancel" class="btn-secondary">Cancelar</button>
             <button id="modal-instalacao-save" class="btn-primary">Salvar</button>
@@ -117,7 +172,6 @@
     <div id="modal-instalado" class="modal hidden">
         <h4>Confirmar Instalação</h4>
         <p>Esta instalação se refere a qual etapa?</p>
-        
         <div class="modal-actions-center">
             <button id="modal-instalado-etapa1" class="btn-primary">Etapa 1</button>
             <button id="modal-instalado-etapa2" class="btn-primary">Etapa 2</button>
@@ -129,20 +183,16 @@
 
     <div id="modal-producao" class="modal hidden">
         <h4>Definir Prazos de Produção</h4>
-        
         <label for="modal-producao-data-entrada">Data de Entrada (Início):</label>
         <input type="date" id="modal-producao-data-entrada">
-        
         <label>Definir Data Limite (Entrega):</label>
         <div class="modal-quick-days">
             <button class="btn-secondary" data-dias="30">30 dias</button>
             <button class="btn-secondary" data-dias="45">45 dias</button>
             <input type="number" id="modal-producao-dias-manual" placeholder="Dias" min="1">
         </div>
-        
         <label for="modal-producao-data-limite">Data Limite Final:</label>
         <input type="date" id="modal-producao-data-limite">
-        
         <div class="modal-actions">
             <button id="modal-producao-cancel" class="btn-secondary">Cancelar</button>
             <button id="modal-producao-save" class="btn-primary">Salvar</button>
