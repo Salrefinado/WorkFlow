@@ -56,6 +56,18 @@ header h1 {
     margin: 0;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.upload-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+
 .btn-primary {
     background-color: var(--color-primary);
     color: white;
@@ -142,7 +154,6 @@ header h1 {
     color: var(--color-text-secondary);
     min-width: 140px;
 }
-/* PONTO 2: Estilo para colunas de data de produção */
 .col-data-date {
      font-size: 0.9rem;
      color: var(--color-text-secondary);
@@ -370,9 +381,13 @@ select.status-select-orcamento[value="StandBy"] {
     box-shadow: 0 5px 20px rgba(0,0,0,0.2);
     z-index: 1001;
     min-width: 350px;
+    max-width: 500px;
     display: flex;
     flex-direction: column;
     gap: 15px;
+    /* NOVO: Permite scroll no modal se for muito alto */
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modal.hidden,
@@ -391,15 +406,63 @@ select.status-select-orcamento[value="StandBy"] {
 }
 .modal input[type="datetime-local"],
 .modal input[type="date"],
-.modal input[type="text"] {
+.modal input[type="text"],
+.modal input[type="file"],
+.modal textarea {
     width: calc(100% - 22px);
     padding: 8px 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.modal textarea {
+    min-height: 60px;
+    resize: vertical;
 }
 
-/* PONTO 2: Estilos para modal de produção */
+#modal-criar-orcamento form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* NOVO: Estilos para botões de seleção de item */
+.item-group-container {
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 10px;
+}
+.item-group-container h5 {
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+    color: var(--color-text-primary);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 5px;
+}
+.item-button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.btn-item-select {
+    background-color: var(--color-background);
+    border: 1px solid var(--color-border);
+    color: var(--color-secondary-text);
+    padding: 5px 10px;
+    border-radius: 15px; /* Pílula */
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.btn-item-select.selected {
+    background-color: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+
 .modal-quick-days {
     display: flex;
     gap: 10px;
