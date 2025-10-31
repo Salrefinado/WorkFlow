@@ -10,10 +10,37 @@ from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
 # --- Configuração ---
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workflow.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
+
+# 1. Configuração do Banco de Dados (PostgreSQL no Render)
+# Ele usará a variável de ambiente DATABASE_URL se existir, caso contrário, voltará para o sqlite local.
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    # O Render fornece 'postgres://' mas o SQLAlchemy prefere 'postgresql://'
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL or 'sqlite:///workflow.db'
+
+# 2. Configuração de Uploads (Render Disks)
+# A variável RENDER_DISK_MOUNT_PATH será definida como '/var/data' no Render.
+# Localmente, usará a pasta 'instance/persistent_uploads' para testes.
+UPLOAD_DIR = os.environ.get('RENDER_DISK_MOUNT_PATH') or 'instance'
+app.config['UPLOAD_FOLDER'] = os.path.join(UPLOAD_DIR, 'persistent_uploads')
+
+
 db = SQLAlchemy(app)
+
+# (NOVO) Garantir que a pasta de upload exista ANTES da primeira requisição
+@app.before_request
+def ensure_upload_folder_exists():
+    upload_path = app.config['UPLOAD_FOLDER']
+    if not os.path.exists(upload_path):
+        try:
+            os.makedirs(upload_path)
+        except OSError as e:
+            app.logger.error(f"Erro ao criar pasta de upload {upload_path}: {e}")
+
 
 # --- Configuração de Notificações (NOVO) ---
 API_KEY = "9102015"
@@ -209,13 +236,15 @@ class ArquivoAnexado(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     orcamento_id = db.Column(db.Integer, db.ForeignKey('orcamento.id'), nullable=False)
     nome_arquivo = db.Column(db.String(300))
-    caminho_arquivo = db.Column(db.String(500))
+    # (MODIFICADO) Não armazenamos mais o caminho, apenas o nome do arquivo.
+    # caminho_arquivo = db.Column(db.String(500))
 
     def to_dict(self):
         return {
             "id": self.id,
             "nome_arquivo": self.nome_arquivo,
-            "url": f"/{self.caminho_arquivo}"
+            # (MODIFICADO) A URL é gerada dinamicamente
+            "url": f"/uploads/{self.nome_arquivo}"
         }
 
 # --- Rota Principal (Frontend) ---
@@ -274,13 +303,14 @@ def create_orcamento_manual():
             file = request.files['arquivo']
             if file and file.filename != '':
                 safe_filename = secure_filename(file.filename)
+                # (MODIFICADO) Salva no UPLOAD_FOLDER configurado
                 target_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
                 file.save(target_path)
                 
                 anexo = ArquivoAnexado(
                     orcamento_id=novo_orcamento.id,
-                    nome_arquivo=safe_filename,
-                    caminho_arquivo=f"uploads/{safe_filename}"
+                    nome_arquivo=safe_filename
+                    # (MODIFICADO) Não salva mais o caminho
                 )
                 db.session.add(anexo)
 
@@ -344,10 +374,12 @@ def upload_orcamento():
                         json_data = json.load(f)
                 elif filename.endswith('.pdf'):
                     safe_filename = secure_filename(os.path.basename(filename))
+                    # (MODIFICADO) Salva no UPLOAD_FOLDER configurado
                     target_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
                     with open(target_path, 'wb') as f:
                         f.write(zf.read(filename))
-                    pdf_files.append({"nome": safe_filename, "caminho": f"uploads/{safe_filename}"})
+                    # (MODIFICADO) Salva apenas o nome do arquivo
+                    pdf_files.append({"nome": safe_filename})
 
         if not json_data:
             return jsonify({"error": "Arquivo .json não encontrado no .zip"}), 400
@@ -366,8 +398,8 @@ def upload_orcamento():
         for pdf in pdf_files:
             anexo = ArquivoAnexado(
                 orcamento_id=novo_orcamento.id,
-                nome_arquivo=pdf['nome'],
-                caminho_arquivo=pdf['caminho']
+                nome_arquivo=pdf['nome']
+                # (MODIFICADO) Não salva mais o caminho
             )
             db.session.add(anexo)
 
@@ -422,13 +454,14 @@ def add_file_to_orcamento(orc_id):
         
     try:
         safe_filename = secure_filename(file.filename)
+        # (MODIFICADO) Salva no UPLOAD_FOLDER configurado
         target_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
         file.save(target_path)
         
         anexo = ArquivoAnexado(
             orcamento_id=orcamento.id,
-            nome_arquivo=safe_filename,
-            caminho_arquivo=f"uploads/{safe_filename}"
+            nome_arquivo=safe_filename
+            # (MODIFICADO) Não salva mais o caminho
         )
         db.session.add(anexo)
         db.session.commit()
@@ -440,19 +473,10 @@ def add_file_to_orcamento(orc_id):
         return jsonify({"error": str(e)}), 500
 
 
+# (MODIFICADO) Esta rota agora serve arquivos da pasta de upload persistente
 @app.route('/uploads/<path:filename>')
 def get_uploaded_file(filename):
-    # Correção para lidar com caminhos
-    base_dir = os.path.dirname(filename)
-    file_name = os.path.basename(filename)
-    
-    # Se o caminho for 'uploads/nome.pdf', base_dir é 'uploads'
-    # Se o caminho for 'nome.pdf', base_dir é ''
-    
-    if base_dir == 'uploads' or not base_dir:
-        return send_from_directory(app.config['UPLOAD_FOLDER'], file_name)
-    
-    # Simplificado:
+    # Serve arquivos diretamente do UPLOAD_FOLDER configurado (que será o disco persistente)
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
@@ -805,22 +829,25 @@ def init_db_command():
 
 def setup_database(app):
     with app.app_context():
-        if not os.path.exists('workflow.db'):
-             db.create_all()
-             if not Grupo.query.first():
-                g1 = Grupo(nome='Entrada de Orçamento', ordem=1)
-                g2 = Grupo(nome='Visitas e Medidas', ordem=2)
-                g3 = Grupo(nome='Projetar', ordem=3)
-                g4 = Grupo(nome='Linha de Produção', ordem=4)
-                g5 = Grupo(nome='Prontos', ordem=5)
-                g6 = Grupo(nome='StandBy', ordem=6)
-                g7 = Grupo(nome='Instalados', ordem=7)
-                db.session.add_all([g1, g2, g3, g4, g5, g6, g7])
-                db.session.commit()
-                print("DB e Grupos criados.")
+        # (MODIFICADO) Não verifica mais o 'workflow.db' pois usará o Postgres
+        # if not os.path.exists('workflow.db'):
+        
+        # Apenas cria as tabelas se não existirem (o init-db fará a criação dos grupos)
+        db.create_all()
+        
+        # Lógica de criação de grupo movida para 'init-db' para ser executada manualmente no deploy
+        if not Grupo.query.first():
+            print("Banco de dados vazio. Execute 'flask init-db' para popular os grupos.")
+            # g1 = Grupo(nome='Entrada de Orçamento', ordem=1)
+            # ... (etc) ...
+            # db.session.commit()
+            # print("DB e Grupos criados.")
 
 if __name__ == '__main__':
-    if not os.path.exists('uploads'):
-        os.makedirs('uploads')
+    # (MODIFICADO) Não cria mais a pasta 'uploads' aqui, é feito pelo @app.before_request
+    # if not os.path.exists('uploads'):
+    #     os.makedirs('uploads')
     setup_database(app)
-    app.run(debug=True, port=5001)
+    # (MODIFICADO) Define a porta com base no ambiente, padrão 5001 localmente
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=True, port=port) # debug=True é OK para local, Render ignora
