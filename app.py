@@ -1,6 +1,9 @@
 import os
 import zipfile
 import json
+import requests
+import threading
+from urllib.parse import quote_plus
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
@@ -12,7 +15,46 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workflow.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 db = SQLAlchemy(app)
 
-# Mapeamento de Itens (do .ZIP) para Colaboradores (DETALHADO)
+# --- Configuração de Notificações (NOVO) ---
+API_KEY = "9102015"
+API_URL = "https://api.callmebot.com/whatsapp.php"
+PHONE_ADMIN = "554188368319"
+PHONE_PAULO = "554100000000"
+PHONE_RENATO = "554100000001"
+
+# Lista de destinatários
+LISTA_GERAL = [PHONE_ADMIN, PHONE_PAULO, PHONE_RENATO]
+
+# --- Função Auxiliar de Notificação (NOVO) ---
+
+def send_whatsapp_notification(message, phone_numbers):
+    """
+    Envia uma notificação por WhatsApp para uma lista de números em threads separadas.
+    """
+    def send_request_target(phone, encoded_message):
+        try:
+            full_url = f"{API_URL}?phone={phone}&text={encoded_message}&apikey={API_KEY}"
+            response = requests.get(full_url, timeout=10)
+            print(f"Notificação enviada para {phone}. Status: {response.status_code}")
+        except Exception as e:
+            print(f"Erro ao enviar notificação para {phone}: {e}")
+
+    try:
+        encoded_message = quote_plus(message)
+        
+        if not isinstance(phone_numbers, list):
+            phone_numbers = [phone_numbers]
+            
+        for phone in phone_numbers:
+            # Inicia uma nova thread para cada requisição
+            thread = threading.Thread(target=send_request_target, args=(phone, encoded_message))
+            thread.start()
+            
+    except Exception as e:
+        print(f"Erro ao preparar notificação: {e}")
+
+
+# Mapeamento de Itens (do .ZIP) para Colaboradores (DETALhado)
 ITEM_DEFINITIONS_PRODUCAO = {
     "Tampa Inox": "Anderson",
     "Tampa Epoxi": "Anderson",
@@ -210,6 +252,7 @@ def create_orcamento_manual():
         # Pega os itens selecionados (enviados pelo JS)
         etapa1_desc = request.form.get('etapa1_descricao') # String com todos os itens
         production_items_json = request.form.get('production_items') # Lista JSON de itens
+        items_list = [] # (NOVO)
 
         if not numero or not cliente:
             return jsonify({"error": "Número do Orçamento e Nome do Cliente são obrigatórios."}), 400
@@ -243,7 +286,7 @@ def create_orcamento_manual():
 
         # Processa os ITENS DE PRODUÇÃO
         if production_items_json:
-            items_list = json.loads(production_items_json)
+            items_list = json.loads(production_items_json) # (NOVO) Carrega a lista
             for item_desc in items_list:
                 # Usa o NOVO MAPA para encontrar o colaborador
                 colaborador = MANUAL_ITEM_MAP.get(item_desc, "Indefinido")
@@ -258,6 +301,19 @@ def create_orcamento_manual():
                 db.session.add(tarefa)
 
         db.session.commit() # Salva o anexo e as tarefas
+        
+        # --- (NOVO) Notificação ---
+        itens_str = ", ".join(items_list) if items_list else "Nenhum"
+        # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+        message = (
+            f"🆕 Novo Orçamento Recebido!\n\n"
+            f"👤 Cliente: {numero} {cliente}\n"
+            f"🧾 Itens: {itens_str}\n"
+            f"📁 Status: {novo_orcamento.status_atual}"
+        )
+        send_whatsapp_notification(message, [PHONE_ADMIN])
+        # --- Fim Notificação ---
+        
         return jsonify(novo_orcamento.to_dict()), 201
 
     except Exception as e:
@@ -276,6 +332,9 @@ def upload_orcamento():
 
     json_data = None
     pdf_files = []
+    
+    # (NOVO) Para notificação
+    itens_producao_desc = []
 
     try:
         with zipfile.ZipFile(file, 'r') as zf:
@@ -316,6 +375,8 @@ def upload_orcamento():
         if 'tarefas_producao' in json_data:
             for tarefa_info in json_data['tarefas_producao']:
                 item_desc = tarefa_info.get('item', 'Item não descrito')
+                itens_producao_desc.append(item_desc) # (NOVO) Adiciona para notificação
+                
                 # Usa o MAPA ANTIGO (detalhado) para .zip
                 colaborador_definido = ITEM_DEFINITIONS_PRODUCAO.get(item_desc, "Indefinido")
                 
@@ -327,6 +388,19 @@ def upload_orcamento():
                 db.session.add(tarefa)
         
         db.session.commit()
+        
+        # --- (NOVO) Notificação ---
+        itens_str = ", ".join(itens_producao_desc) if itens_producao_desc else "Nenhum"
+        # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+        message = (
+            f"🆕 Novo Orçamento Recebido!\n\n"
+            f"👤 Cliente: {novo_orcamento.numero} {novo_orcamento.cliente}\n"
+            f"🧾 Itens: {itens_str}\n"
+            f"📁 Status: {novo_orcamento.status_atual}"
+        )
+        send_whatsapp_notification(message, [PHONE_ADMIN])
+        # --- Fim Notificação ---
+        
         return jsonify(novo_orcamento.to_dict()), 201
 
     except Exception as e:
@@ -368,22 +442,28 @@ def add_file_to_orcamento(orc_id):
 
 @app.route('/uploads/<path:filename>')
 def get_uploaded_file(filename):
+    # Correção para lidar com caminhos
     base_dir = os.path.dirname(filename)
     file_name = os.path.basename(filename)
-    if base_dir != 'uploads':
-         base_dir = 'uploads'
-         
-    if not os.path.dirname(filename):
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-        
-    return send_from_directory(base_dir, file_name)
+    
+    # Se o caminho for 'uploads/nome.pdf', base_dir é 'uploads'
+    # Se o caminho for 'nome.pdf', base_dir é ''
+    
+    if base_dir == 'uploads' or not base_dir:
+        return send_from_directory(app.config['UPLOAD_FOLDER'], file_name)
+    
+    # Simplificado:
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 def parse_datetime(date_str):
     if not date_str: return None
     try:
+        # Tenta formatar '2023-10-31T14:30'
         return datetime.fromisoformat(date_str)
     except ValueError:
         try:
+            # Tenta formatar '2023-10-31'
             return datetime.strptime(date_str, '%Y-%m-%d')
         except ValueError:
             return None
@@ -398,7 +478,12 @@ def update_orcamento_status(orc_id):
     novo_status = data.get('novo_status')
     dados_adicionais = data.get('dados_adicionais', {})
     
+    # --- (NOVO) Captura dados antigos para notificação ---
+    status_antigo = orcamento.status_atual
     grupo_atual_id = orcamento.grupo_id
+    grupo_antigo_nome = orcamento.grupo.nome
+    # --- Fim Captura ---
+    
     orcamento.status_atual = novo_status
     
     grupos = {g.nome: g.id for g in Grupo.query.all()}
@@ -411,8 +496,17 @@ def update_orcamento_status(orc_id):
     g_instalados = grupos.get('Instalados')
     
     moveu_para_producao = False
+    
+    # (NOVO) Variáveis de notificação
+    notification_message = None
+    notification_recipients = []
 
     if grupo_atual_id == g_entrada:
+        # (NOVO) Trigger 2: Mudança no grupo "Entrada"
+        notification_recipients = LISTA_GERAL
+        # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+        notification_message = f"📋 Atualização de Orçamento\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n🔄 Mudou o status de: {status_antigo}\n\n➡️ Para: {novo_status}"
+
         if novo_status == 'Visita Agendada':
             orcamento.grupo_id = g_visitas
             orcamento.data_visita = parse_datetime(dados_adicionais.get('data_visita'))
@@ -471,12 +565,23 @@ def update_orcamento_status(orc_id):
                 orcamento.status_atual = 'Instalado'
 
     elif grupo_atual_id == g_standby:
+        # (NOVO) Trigger 7: Mudança no grupo "Standby"
+        notification_recipients = LISTA_GERAL
+        # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+        notification_message = f"🔄 Atualização de Status\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n📍 Mudou o status de: {status_antigo}\n\n➡️ Para: {novo_status}"
+
         if novo_status == 'Liberado':
             if orcamento.grupo_origem_standby:
                 orcamento.grupo_id = orcamento.grupo_origem_standby
             else:
                 orcamento.grupo_id = g_entrada
             orcamento.grupo_origem_standby = None
+    
+    elif grupo_atual_id == g_instalados:
+        # (NOVO) Trigger 7: Mudança no grupo "Instalados"
+        notification_recipients = LISTA_GERAL
+        # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+        notification_message = f"🔄 Atualização de Status\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n📍 Mudou o status de: {status_antigo}\n\n➡️ Para: {novo_status}"
             
     if moveu_para_producao:
         orcamento.data_entrada_producao = parse_datetime(dados_adicionais.get('data_entrada'))
@@ -486,6 +591,47 @@ def update_orcamento_status(orc_id):
     
     try:
         db.session.commit()
+        
+        # --- (NOVO) Lógica de Notificação Pós-Commit ---
+        
+        # (Trigger 2) Complemento - Checa se moveu de grupo
+        if notification_message and grupo_atual_id == g_entrada and orcamento.grupo_id != grupo_atual_id:
+            grupo_novo_nome = orcamento.grupo.nome
+            # (NOVO) ATUALIZAÇÃO DE TEMPLATE (MOVIMENTO)
+            notification_message = f"📋 Atualização de Orçamento\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n🔄 Mudou o status de: {status_antigo}\n\n➡️ Para: {novo_status}\n\n📁 E foi movido para o grupo: {grupo_novo_nome}"
+
+        # (Trigger 3) Agendamento de Visita
+        if novo_status == 'Visita Agendada':
+            data_visita_fmt = orcamento.data_visita.strftime('%d/%m %H:%M') if orcamento.data_visita else 'N/A'
+            # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+            notification_message = f"📆 Visita Agendada!\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n📍 Data: {data_visita_fmt}\n\n👷 Responsável: {orcamento.responsavel_visita}"
+            notification_recipients = LISTA_GERAL
+
+        # (Trigger 4) Agendamento de Instalação
+        elif novo_status == 'Instalação Agendada':
+            data_inst_fmt = orcamento.data_instalacao.strftime('%d/%m %H:%M') if orcamento.data_instalacao else 'N/A'
+            # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+            notification_message = f"🔧 Instalação Agendada!\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n📍 Data: {data_inst_fmt}\n\n👷 Responsável: {orcamento.responsavel_instalacao}"
+            notification_recipients = LISTA_GERAL
+        
+        # (Trigger 6) Instalação Concluída
+        elif novo_status == 'Instalado' and (grupo_atual_id == g_visitas or grupo_atual_id == g_prontos):
+            etapa = dados_adicionais.get('etapa_instalada', 'N/A')
+            etapa_num = "1ª" if etapa == 'Etapa 1' else "2ª"
+            resp_inst = orcamento.responsavel_instalacao or 'N/A'
+            # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+            notification_message = f"🎉 Instalação Concluída!\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n🔧 Etapa: {etapa_num} Etapa\n\n👷 Responsável: {resp_inst}"
+            
+            if etapa == 'Etapa 1':
+                 notification_message += "\n\n📁 Movido para Visitas e Medidas — agendar a visita para medidas da segunda etapa."
+                 
+            notification_recipients = LISTA_GERAL
+        
+        # Envia a notificação se houver
+        if notification_message and notification_recipients:
+            send_whatsapp_notification(notification_message, notification_recipients)
+        # --- Fim Notificação ---
+        
         return jsonify(orcamento.to_dict())
     except Exception as e:
         db.session.rollback()
@@ -499,10 +645,18 @@ def update_tarefa_status(tarefa_id):
         return jsonify({"error": "Tarefa não encontrada"}), 404
         
     novo_status = request.json.get('status')
+    
+    # (NOVO) Captura dados para notificação
+    orcamento = tarefa.orcamento
+    numero = orcamento.numero
+    cliente = orcamento.cliente
+    colaborador = tarefa.colaborador
+    item = tarefa.item_descricao
+    notification_message = None
+    
     tarefa.status = novo_status
     db.session.commit()
     
-    orcamento = tarefa.orcamento
     todas_prontas = True
     if not orcamento.tarefas:
         todas_prontas = False
@@ -519,6 +673,26 @@ def update_tarefa_status(tarefa_id):
             orcamento.data_pronto = datetime.utcnow()
             orcamento.status_atual = 'Agendar Instalação/Entrega'
             db.session.commit()
+            
+    # --- (NOVO) Notificação de Tarefa (Trigger 5) ---
+    if novo_status == 'Iniciou a Produção':
+        notification_message = f"⚙️ Início de Produção\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n🚀 Itens iniciados: {item}"
+    elif novo_status == 'Fase de Acabamento':
+        notification_message = f"🛠️ Atualização de Produção\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n🎨 Itens em fase de acabamento: {item}"
+    elif novo_status == 'Produção Finalizada':
+        notification_message = f"✅ Produção Concluída!\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n📦 Itens finalizados: {item}"
+        if todas_prontas:
+             notification_message += "\n\n📁 Movido para o grupo: Prontos\n\n📅 Agende uma data de instalação ou entrega."
+    elif novo_status == 'Aguardando Vidro / Pedra':
+        notification_message = f"📦 Aguardando Materiais\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n🪟 Situação: Aguardando vidro/pedra para iniciar a produção."
+    elif novo_status == 'Reforma em Andamento':
+        notification_message = f"🔨 Reforma em Andamento\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n🔁 Situação: Reforma em andamento na linha de produção."
+    elif novo_status == 'StandBy':
+        notification_message = f"⏸️ Produção em StandBy\n\n👤 Cliente: {numero} {cliente}\n\n🧑‍🏭 Responsável: {colaborador}\n\n📦 Situação: Projeto pausado temporariamente."
+
+    if notification_message:
+        send_whatsapp_notification(notification_message, LISTA_GERAL)
+    # --- Fim Notificação ---
 
     return jsonify(orcamento.to_dict())
 
@@ -533,10 +707,16 @@ def move_orcamento(orc_id):
     if orcamento.grupo_id == novo_grupo_id:
         return jsonify(orcamento.to_dict())
 
+    # (NOVO) Captura dados para notificação
+    grupo_antigo_nome = orcamento.grupo.nome
+    
     grupo_destino = Grupo.query.get(novo_grupo_id)
     if not grupo_destino:
         return jsonify({"error": "Grupo de destino não encontrado"}), 404
 
+    # (NOVO) Captura nome do novo grupo
+    grupo_novo_nome = grupo_destino.nome
+    
     orcamento.grupo_id = novo_grupo_id
     
     if grupo_destino.nome == 'Entrada de Orçamento':
@@ -546,7 +726,7 @@ def move_orcamento(orc_id):
     elif grupo_destino.nome == 'Projetar':
         orcamento.status_atual = 'Em Desenho'
     elif grupo_destino.nome == 'Linha de Produção':
-        orcamento.status_atual = 'Não Iniciado'
+        orcamento.status_atual = 'Não Iniciado' # (Mudança) O status padrão é "Não Iniciado"
         orcamento.data_entrada_producao = parse_datetime(data.get('data_entrada'))
         orcamento.data_limite_producao = parse_datetime(data.get('data_limite'))
         for tarefa in orcamento.tarefas:
@@ -556,14 +736,22 @@ def move_orcamento(orc_id):
         if not orcamento.data_pronto:
              orcamento.data_pronto = datetime.utcnow()
     elif grupo_destino.nome == 'StandBy':
-        orcamento.status_atual = 'Parado'
+        orcamento.status_atual = 'Parado' # (Mudança) Status padrão de Standby
         # Bug fix: Nao setar grupo origem se ja estiver em standby
         if orcamento.grupo_origem_standby is None:
-            orcamento.grupo_origem_standby = orcamento.grupo_id 
+            # (Correção) Deve pegar o ID do grupo antigo, não o ID do grupo atual (que já é standby)
+            grupo_antigo_id = Grupo.query.filter_by(nome=grupo_antigo_nome).first().id
+            orcamento.grupo_origem_standby = grupo_antigo_id
     elif grupo_destino.nome == 'Instalados':
         orcamento.status_atual = 'Instalado'
         
     db.session.commit()
+    
+    # --- (NOVO) Notificação de Arrastar (Trigger 8) ---
+    # (NOVO) ATUALIZAÇÃO DE TEMPLATE
+    message = f"↔️ Item Movido Manualmente\n\n👤 Cliente: {orcamento.numero} {orcamento.cliente}\n\n📁 Movido de: {grupo_antigo_nome}\n\n➡️ Para: {grupo_novo_nome}"
+    send_whatsapp_notification(message, LISTA_GERAL)
+    # --- Fim Notificação ---
     
     return jsonify(orcamento.to_dict())
 
