@@ -12,7 +12,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workflow.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 db = SQLAlchemy(app)
 
-# PONTO 1: Mapeamento de Itens para Colaboradores
+# Mapeamento de Itens (do .ZIP) para Colaboradores (DETALHADO)
 ITEM_DEFINITIONS_PRODUCAO = {
     "Tampa Inox": "Anderson",
     "Tampa Epoxi": "Anderson",
@@ -34,16 +34,16 @@ ITEM_DEFINITIONS_PRODUCAO = {
     "Giratório 2L 7E": "Luiz",
     "Giratório 2L 8E": "Luiz",
     "Cooktop + Bifeira": "Luiz",
-    "Cooktop": "Indefinido", # Sem colaborador na lista
+    "Cooktop": "Indefinido",
     "Porta Guilhotina Vidro L": "Edison",
     "Porta Guilhotina Vidro U": "Edison",
     "Porta Guilhotina Vidro F": "Edison",
     "Porta Guilhotina Inox F": "Edison",
     "Porta Guilhotina Pedra F": "Edison",
     "Coifa Epoxi": "Hélio",
-    "Isolamento Coifa": "Indefinido", # Sem colaborador na lista
+    "Isolamento Coifa": "Indefinido",
     "Placa cimenticia Porta": "Edison",
-    "Revestimento Base": "Indefinido", # Sem colaborador na lista
+    "Revestimento Base": "Indefinido",
     "Bifeteira grill": "Luiz",
     "Balanço 2": "Luiz",
     "Balanço 3": "Luiz",
@@ -57,6 +57,33 @@ ITEM_DEFINITIONS_PRODUCAO = {
     "Moldura Área de fogo": "Luiz",
     "Grelha de descanso": "José",
     "KAM800 2 Faces": "Edison"
+}
+
+# NOVO: Mapeamento de Itens (CRIAÇÃO MANUAL) para Colaboradores (SIMPLIFICADO)
+MANUAL_ITEM_MAP = {
+    # Edison
+    "Porta Guilhotina": "Edison",
+    "Tampa Vidro": "Edison",
+    "Lareira": "Edison",
+    # Luiz
+    "Parrila": "Luiz",
+    "Regulagem de Balanço": "Luiz",
+    "Giratorio": "Luiz",
+    "Sistema Motor": "Luiz",
+    "Moldura": "Luiz",
+    "Base": "Luiz",
+    # Hélio
+    "Coifa e Chaminé": "Hélio",
+    "Coifa": "Hélio",
+    "Gavetão": "Hélio",
+    "Revestimento": "Hélio",
+    # José
+    "Grelhas": "José",
+    "Espetos": "José",
+    "Sistema Elevar Manual": "José",
+    # Anderson
+    "Chaminé Lareira": "Anderson",
+    "Tampa Churrasqueira": "Anderson"
 }
 
 
@@ -76,7 +103,6 @@ class Orcamento(db.Model):
     
     status_atual = db.Column(db.String(100), default='Orçamento Aprovado')
     
-    # PONTO 2: Novas colunas de data para Produção
     data_entrada_producao = db.Column(db.DateTime)
     data_limite_producao = db.Column(db.DateTime)
     
@@ -170,6 +196,72 @@ def get_workflow():
         })
     return jsonify(workflow_data)
 
+# ATUALIZADO: Rota de criação manual
+@app.route('/api/orcamento/create_manual', methods=['POST'])
+def create_orcamento_manual():
+    try:
+        # Pega dados do formulário (request.form)
+        numero = request.form.get('numero_orcamento')
+        cliente = request.form.get('nome_cliente')
+        
+        # Pega os itens selecionados (enviados pelo JS)
+        etapa1_desc = request.form.get('etapa1_descricao') # String com todos os itens
+        production_items_json = request.form.get('production_items') # Lista JSON de itens
+
+        if not numero or not cliente:
+            return jsonify({"error": "Número do Orçamento e Nome do Cliente são obrigatórios."}), 400
+
+        # Cria o novo orçamento
+        novo_orcamento = Orcamento(
+            numero=numero,
+            cliente=cliente,
+            etapa1_descricao=etapa1_desc, # Salva a string de itens para visibilidade
+            etapa2_descricao="", # Campo não mais usado no modal, mas pode ser mantido
+            grupo_id=1, # ID 1 = "Entrada de Orçamento"
+            status_atual='Orçamento Aprovado'
+        )
+        db.session.add(novo_orcamento)
+        db.session.commit() # Salva para obter o ID
+
+        # Processa o arquivo (se houver)
+        if 'arquivo' in request.files:
+            file = request.files['arquivo']
+            if file and file.filename != '':
+                safe_filename = secure_filename(file.filename)
+                target_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+                file.save(target_path)
+                
+                anexo = ArquivoAnexado(
+                    orcamento_id=novo_orcamento.id,
+                    nome_arquivo=safe_filename,
+                    caminho_arquivo=f"uploads/{safe_filename}"
+                )
+                db.session.add(anexo)
+
+        # Processa os ITENS DE PRODUÇÃO
+        if production_items_json:
+            items_list = json.loads(production_items_json)
+            for item_desc in items_list:
+                # Usa o NOVO MAPA para encontrar o colaborador
+                colaborador = MANUAL_ITEM_MAP.get(item_desc, "Indefinido")
+                
+                # Cria a Tarefa de Produção
+                tarefa = TarefaProducao(
+                    orcamento_id=novo_orcamento.id,
+                    colaborador=colaborador,
+                    item_descricao=item_desc,
+                    status='Não Iniciado' # Padrão
+                )
+                db.session.add(tarefa)
+
+        db.session.commit() # Salva o anexo e as tarefas
+        return jsonify(novo_orcamento.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_orcamento():
     if 'file' not in request.files:
@@ -217,17 +309,16 @@ def upload_orcamento():
             )
             db.session.add(anexo)
 
-        # PONTO 1: Lógica de Tarefas modificada
+        # Lógica de Tarefas (Upload ZIP usa o mapa antigo e detalhado)
         if 'tarefas_producao' in json_data:
             for tarefa_info in json_data['tarefas_producao']:
                 item_desc = tarefa_info.get('item', 'Item não descrito')
-                
-                # Busca o colaborador no mapeamento
+                # Usa o MAPA ANTIGO (detalhado) para .zip
                 colaborador_definido = ITEM_DEFINITIONS_PRODUCAO.get(item_desc, "Indefinido")
                 
                 tarefa = TarefaProducao(
                     orcamento_id=novo_orcamento.id,
-                    colaborador=colaborador_definido, # Usa o colaborador do mapeamento
+                    colaborador=colaborador_definido,
                     item_descricao=item_desc
                 )
                 db.session.add(tarefa)
@@ -284,7 +375,6 @@ def get_uploaded_file(filename):
         
     return send_from_directory(base_dir, file_name)
 
-# Helper para parse de datas (aceita ISO ou YYYY-MM-DD)
 def parse_datetime(date_str):
     if not date_str: return None
     try:
@@ -317,10 +407,8 @@ def update_orcamento_status(orc_id):
     g_standby = grupos.get('StandBy')
     g_instalados = grupos.get('Instalados')
     
-    # --- PONTO 2: Flag para checar se moveu para produção ---
     moveu_para_producao = False
 
-    # 1. Grupo: Entrada de Orçamento
     if grupo_atual_id == g_entrada:
         if novo_status == 'Visita Agendada':
             orcamento.grupo_id = g_visitas
@@ -335,7 +423,6 @@ def update_orcamento_status(orc_id):
             orcamento.grupo_id = g_standby
             orcamento.grupo_origem_standby = grupo_atual_id
 
-    # 2. Grupo: Visitas e Medidas
     elif grupo_atual_id == g_visitas:
         if novo_status == 'Mandar para Produção':
             orcamento.grupo_id = g_projetar
@@ -351,7 +438,6 @@ def update_orcamento_status(orc_id):
                 orcamento.grupo_id = g_instalados
                 orcamento.status_atual = 'Instalado'
 
-    # 3. Grupo: Projetar
     elif grupo_atual_id == g_projetar:
         if novo_status == 'Aprovado para Produção':
             orcamento.grupo_id = g_producao
@@ -360,13 +446,11 @@ def update_orcamento_status(orc_id):
             orcamento.grupo_id = g_standby
             orcamento.grupo_origem_standby = grupo_atual_id
 
-    # 4. Grupo: Linha de Produção
     elif grupo_atual_id == g_producao:
         if novo_status == 'StandBy':
             orcamento.grupo_id = g_standby
             orcamento.grupo_origem_standby = grupo_atual_id
 
-    # 5. Grupo: Prontos
     elif grupo_atual_id == g_prontos:
         if novo_status == 'Instalação Agendada':
             orcamento.data_instalacao = parse_datetime(dados_adicionais.get('data_instalacao'))
@@ -383,7 +467,6 @@ def update_orcamento_status(orc_id):
                 orcamento.grupo_id = g_instalados
                 orcamento.status_atual = 'Instalado'
 
-    # 6. Grupo: StandBy
     elif grupo_atual_id == g_standby:
         if novo_status == 'Liberado':
             if orcamento.grupo_origem_standby:
@@ -392,11 +475,9 @@ def update_orcamento_status(orc_id):
                 orcamento.grupo_id = g_entrada
             orcamento.grupo_origem_standby = None
             
-    # --- PONTO 2: Salva as datas de produção se moveu ---
     if moveu_para_producao:
         orcamento.data_entrada_producao = parse_datetime(dados_adicionais.get('data_entrada'))
         orcamento.data_limite_producao = parse_datetime(dados_adicionais.get('data_limite'))
-        # Reseta tarefas
         for tarefa in orcamento.tarefas:
             tarefa.status = 'Não Iniciado'
     
@@ -455,7 +536,6 @@ def move_orcamento(orc_id):
 
     orcamento.grupo_id = novo_grupo_id
     
-    # Aplicar status e regras padrão ao mover
     if grupo_destino.nome == 'Entrada de Orçamento':
         orcamento.status_atual = 'Orçamento Aprovado'
     elif grupo_destino.nome == 'Visitas e Medidas':
@@ -464,7 +544,6 @@ def move_orcamento(orc_id):
         orcamento.status_atual = 'Em Desenho'
     elif grupo_destino.nome == 'Linha de Produção':
         orcamento.status_atual = 'Não Iniciado'
-        # PONTO 2: Salva as datas do drag & drop
         orcamento.data_entrada_producao = parse_datetime(data.get('data_entrada'))
         orcamento.data_limite_producao = parse_datetime(data.get('data_limite'))
         for tarefa in orcamento.tarefas:
