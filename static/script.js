@@ -3,7 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const board = document.getElementById('workflow-board');
     const uploadButton = document.getElementById('upload-button');
     const fileInput = document.getElementById('zip-upload');
-    
+    const btnCriarManual = document.getElementById('btn-criar-manual');
+
     // Templates
     const grupoTemplate = document.getElementById('grupo-template');
     const rowTemplateStatus = document.getElementById('row-template-status');
@@ -12,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tarefaTemplate = document.getElementById('tarefa-producao-template');
     const arquivosCellTemplate = document.getElementById('arquivos-cell-template');
 
-    // PONTO 2: Cabeçalhos atualizados
+    // Mapeamento de cabeçalhos das tabelas por grupo
     const groupHeaders = {
         'Entrada de Orçamento': ['Orçamento', 'Arquivos', 'Status'],
         'Visitas e Medidas': ['Orçamento', 'Arquivos', 'Status', 'Data Visita', 'Responsável'],
@@ -45,10 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Elementos do Modal
     const modalOverlay = document.getElementById('modal-overlay');
+    const modalCriarOrcamento = document.getElementById('modal-criar-orcamento');
     const modalVisita = document.getElementById('modal-visita');
     const modalInstalacao = document.getElementById('modal-instalacao');
     const modalInstalado = document.getElementById('modal-instalado');
-    const modalProducao = document.getElementById('modal-producao'); // PONTO 2
+    const modalProducao = document.getElementById('modal-producao');
 
     /**
      * Carrega todo o workflow da API e renderiza no quadro.
@@ -112,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const grupoNome = orcamento.grupo_nome;
         
         if (grupoNome === 'Linha de Produção') {
-            return renderRowProducao(orcamento); // PONTO 2: Rota atualizada
+            return renderRowProducao(orcamento);
         } else if (grupoNome === 'Instalados') {
             return renderRowFinal(orcamento);
         } else if (statusOptionsByGroup[grupoNome]) {
@@ -129,8 +131,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatarData(dataISO, dateOnly = false) {
         if (!dataISO) return '---';
         try {
+            // Se for apenas YYYY-MM-DD
+            if (dateOnly && dataISO.length === 10 && !dataISO.includes('T')) {
+                return dataISO.split('-').reverse().join('/');
+            }
+
             const data = new Date(dataISO);
-            // Corrige o fuso horário (ISO string é UTC, new Date() converte para local)
+            // Corrige o fuso horário
             const dataLocal = new Date(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate(), data.getUTCHours(), data.getUTCMinutes());
             
             const dia = String(dataLocal.getDate()).padStart(2, '0');
@@ -146,12 +153,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${dia}/${mes}/${ano} ${hora}:${min}`;
         } catch (e) {
             console.warn("Erro ao formatar data:", dataISO, e);
-            // Fallback para datas YYYY-MM-DD
-            if (typeof dataISO === 'string' && dataISO.includes('T')) {
-                 return dataISO.split('T')[0].split('-').reverse().join('/');
-            }
-            if (typeof dataISO === 'string' && dataISO.length === 10) {
-                 return dataISO.split('-').reverse().join('/');
+            if (typeof dataISO === 'string' && dataISO.length >= 10) {
+                 return dataISO.substring(0, 10).split('-').reverse().join('/');
             }
             return 'Data inválida';
         }
@@ -278,20 +281,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     /**
-     * PONTO 2: Renderiza a linha para o grupo "Linha de Produção" (ATUALIZADO).
+     * Renderiza a linha para o grupo "Linha de Produção".
      */
     function renderRowProducao(orcamento) {
         const clone = rowTemplateProducao.content.cloneNode(true);
         const row = clone.querySelector('tr');
         row.dataset.orcamentoId = orcamento.id;
         
-        // Adiciona colunas
         row.appendChild(renderOrcamentoCell(orcamento));
         row.appendChild(renderArquivosCell(orcamento.arquivos, orcamento.id));
         row.appendChild(renderDataCell(formatarData(orcamento.data_entrada_producao, true), true));
         row.appendChild(renderDataCell(formatarData(orcamento.data_limite_producao, true), true));
 
-        // Adiciona a coluna de Tarefas
         const tarefasCell = document.createElement('td');
         tarefasCell.className = 'col-tarefas-producao';
         orcamento.tarefas.forEach(tarefa => {
@@ -412,7 +413,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- LÓGICA DE MODAIS E ATUALIZAÇÃO DE STATUS ---
     
-    // Converte uma data JS para o formato 'YYYY-MM-DD'
     function toInputDate(date) {
         return date.toISOString().split('T')[0];
     }
@@ -424,12 +424,18 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function hideModals() {
         modalOverlay.classList.add('hidden');
+        modalCriarOrcamento.classList.add('hidden');
         modalVisita.classList.add('hidden');
         modalInstalacao.classList.add('hidden');
         modalInstalado.classList.add('hidden');
         modalProducao.classList.add('hidden');
         
-        // Limpa os campos
+        // Limpa formulários
+        document.getElementById('form-criar-manual').reset();
+        modalCriarOrcamento.querySelectorAll('.btn-item-select.selected').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
         document.getElementById('modal-visita-data').value = '';
         document.getElementById('modal-visita-responsavel').value = '';
         document.getElementById('modal-instalacao-data').value = '';
@@ -438,6 +444,72 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modal-producao-data-limite').value = '';
         document.getElementById('modal-producao-dias-manual').value = '';
     }
+
+    /**
+     * Abre modal de criação manual e aguarda.
+     */
+    function openCriarModal() {
+        return new Promise((resolve, reject) => {
+            showModal(modalCriarOrcamento);
+
+            const cancelBtn = document.getElementById('modal-criar-cancel');
+            cancelBtn.onclick = () => {
+                hideModals();
+                reject(new Error('Cancelado pelo usuário'));
+            };
+            
+            // Adiciona listeners para os botões de item
+            modalCriarOrcamento.querySelectorAll('.btn-item-select').forEach(btn => {
+                // CORREÇÃO: O 'D' foi removido
+                btn.onclick = () => {
+                    btn.classList.toggle('selected');
+                };
+            });
+        });
+    }
+
+    /**
+     * Manipula o envio do formulário de criação manual.
+     */
+    async function handleCriarManualSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+
+        // Validação
+        if (!formData.get('numero_orcamento') || !formData.get('nome_cliente')) {
+            alert('Número do Orçamento e Nome do Cliente são obrigatórios.');
+            return;
+        }
+
+        // Coleta os itens de produção selecionados
+        const selectedItems = [];
+        modalCriarOrcamento.querySelectorAll('.btn-item-select.selected').forEach(btn => {
+            selectedItems.push(btn.dataset.item);
+        });
+        
+        // Adiciona os itens ao FormData
+        formData.append('production_items', JSON.stringify(selectedItems));
+        formData.append('etapa1_descricao', selectedItems.join(', ')); // Para visibilidade
+        
+        try {
+            const response = await fetch('/api/orcamento/create_manual', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+
+            hideModals();
+            await loadWorkflow();
+
+        } catch (error) {
+            console.error('Erro ao criar orçamento:', error);
+            alert(`Erro ao salvar: ${error.message}`);
+        }
+    }
+
 
     function openVisitaModal() {
         return new Promise((resolve, reject) => {
@@ -502,9 +574,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * PONTO 2: Novo Modal para Datas de Produção
-     */
     function openProducaoModal() {
         return new Promise((resolve, reject) => {
             showModal(modalProducao);
@@ -514,22 +583,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const diasManualEl = document.getElementById('modal-producao-dias-manual');
             const quickDayButtons = modalProducao.querySelectorAll('.modal-quick-days button');
 
-            // Define a data de entrada como hoje
             const hoje = new Date();
             dataEntradaEl.value = toInputDate(hoje);
 
-            // Função para calcular data limite
             const calcularLimite = (dias) => {
                 if (!dataEntradaEl.value || !dias) return;
-                const entrada = new Date(dataEntradaEl.value + "T00:00:00"); // Garante fuso local
+                const entrada = new Date(dataEntradaEl.value + "T00:00:00");
                 entrada.setDate(entrada.getDate() + parseInt(dias));
                 dataLimiteEl.value = toInputDate(entrada);
             };
 
-            // Listeners
             quickDayButtons.forEach(btn => {
                 btn.onclick = () => {
-                    diasManualEl.value = ''; // Limpa manual
+                    diasManualEl.value = '';
                     calcularLimite(btn.dataset.dias);
                 };
             });
@@ -539,10 +605,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             
             dataEntradaEl.onchange = () => {
-                 calcularLimite(diasManualEl.value || 30); // Recalcula se a entrada mudar
+                 calcularLimite(diasManualEl.value || 30);
             };
+            
+            calcularLimite(30);
 
-            // Ações do Modal
             document.getElementById('modal-producao-save').onclick = () => {
                 const data = {
                     data_entrada: dataEntradaEl.value,
@@ -610,7 +677,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (novoStatus === 'Instalado') {
                 dados_adicionais = await openInstaladoModal();
             } 
-            // PONTO 2: Checa se está movendo para produção
             else if (['Em Produção', 'Aprovado para Produção'].includes(novoStatus)) {
                 dados_adicionais = await openProducaoModal();
             }
@@ -678,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 handle: '.monday-row',
                 ghostClass: 'sortable-ghost',
                 chosenClass: 'sortable-chosen',
-                onEnd: async (evt) => { // PONTO 2: Tornou-se async
+                onEnd: async (evt) => {
                     const orcamentoId = evt.item.dataset.orcamentoId;
                     const novoGrupoId = evt.to.closest('.monday-group').dataset.groupId;
                     const grupoAntigoId = evt.from.closest('.monday-group').dataset.groupId;
@@ -687,7 +753,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         let dados_adicionais = {};
                         
-                        // PONTO 2: Checa se o destino é "Linha de Produção"
                         const grupoDestinoEl = evt.to.closest('.monday-group').querySelector('.group-title');
                         const grupoNome = grupoDestinoEl.textContent;
 
@@ -695,9 +760,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             try {
                                 dados_adicionais = await openProducaoModal();
                             } catch (e) {
-                                // Cancelou o modal, reverte o drag
                                 console.log('Movimentação cancelada.');
-                                loadWorkflow(); // Recarrega para reverter
+                                loadWorkflow();
                                 return;
                             }
                         }
@@ -710,7 +774,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     /**
-     * PONTO 2: Atualizado para enviar dados adicionais (datas)
+     * Envia a movimentação manual (Drag & Drop) para o backend
      */
     async function handleManualMove(orcamentoId, novoGrupoId, dados_adicionais = {}) {
         try {
@@ -742,6 +806,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     uploadButton.addEventListener('click', handleUpload);
     
+    btnCriarManual.addEventListener('click', () => {
+        openCriarModal().catch(err => {
+            if (err.message === 'Cancelado pelo usuário') {
+                console.log('Criação manual cancelada.');
+            }
+        });
+    });
+
+    document.getElementById('form-criar-manual').addEventListener('submit', handleCriarManualSubmit);
+
     // Delegação de eventos
     board.addEventListener('change', (e) => {
         handleOrcamentoStatusChange(e);
