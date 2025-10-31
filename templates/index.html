@@ -25,7 +25,7 @@
         </main>
 
     <template id="grupo-template">
-        <section class="monday-group" data-group-id="">
+        <section class="monday-group collapsed" data-group-id="">
             <h2 class="group-title"></h2>
             <div class="table-wrapper">
                 <table class="monday-table">
@@ -63,7 +63,6 @@
 
     <template id="tarefa-producao-template">
         <div class="tarefa-producao" data-tarefa-id="">
-            <span class="tarefa-colaborador"></span>
             <span class="tarefa-item"></span>
             <select class="status-select-tarefa">
                 <option value="Não Iniciado" class="status-option-nao-iniciado">Não Iniciado</option>
@@ -196,6 +195,19 @@
         <div class="modal-actions">
             <button id="modal-producao-cancel" class="btn-secondary">Cancelar</button>
             <button id="modal-producao-save" class="btn-primary">Salvar</button>
+        </div>
+    </div>
+
+    <div id="modal-add-tarefa" class="modal hidden">
+        <h4>Adicionar Tarefa de Produção</h4>
+        <input type="hidden" id="modal-tarefa-orcamento-id">
+        <label for="modal-tarefa-colaborador">Colaborador:</label>
+        <input type="text" id="modal-tarefa-colaborador" placeholder="Ex: Edison">
+        <label for="modal-tarefa-item">Item:</label>
+        <input type="text" id="modal-tarefa-item" placeholder="Ex: Porta Guilhotina">
+        <div class="modal-actions">
+            <button id="modal-tarefa-cancel" type="button" class="btn-secondary">Cancelar</button>
+            <button id="modal-tarefa-save" type="button" class="btn-primary">Salvar</button>
         </div>
     </div>
 
